@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-$code = substr(preg_replace('/[^0-9]/', '', (string) ($pathArray['code'] ?? '')), 0, 5);
+$code = substr(preg_replace('/[^0-9]/', '', (string) ($pathArray['code'] ?? '')) ?? '', 0, 5);
 
 $sector_data = $app->query(
     "SELECT * FROM sic_codes WHERE code = :code LIMIT 1",

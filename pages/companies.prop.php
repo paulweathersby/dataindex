@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-$code = substr(preg_replace('/[^0-9]/', '', (string) ($pathArray['code'] ?? '')), 0, 5);
+$code = substr(preg_replace('/[^0-9]/', '', (string) ($pathArray['code'] ?? '')) ?? '', 0, 5);
 $town = trim(str_replace('-', ' ', (string) ($pathArray['town'] ?? '')));
 
 $sector_data = $app->query(

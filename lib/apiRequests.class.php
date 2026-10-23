@@ -5,6 +5,8 @@
  * Design notes:
  *   - Credentials come from environment variables via the constants defined
  *     in config/app.cfg.php. No secrets are hard-coded here.
+ *   - Requests go through Guzzle (already a Composer dependency) so the app
+ *     does not need PEAR's HTTP_Request2, php-pear, or php-xml.
  *   - TLS verification is ALWAYS on. Trust store issues should be fixed on
  *     the server, not by disabling verification.
  *   - Failures are logged via error_log() and surfaced as `null` / `false`
@@ -13,11 +15,14 @@
 
 declare(strict_types=1);
 
-include_once 'HTTP/Request2.php';
+use GuzzleHttp\Client;
 
 class apiRequest
 {
     public $app;
+
+    /** @var Client|null */
+    private $http;
 
     public function __construct($app)
     {
@@ -25,19 +30,27 @@ class apiRequest
     }
 
     /**
-     * Build a hardened HTTP_Request2 with sane defaults.
+     * Shared client. TLS verification stays on, and HTTP error statuses are
+     * returned to the caller instead of thrown, matching the old PEAR client.
      */
-    private function buildRequest(string $url, string $method = HTTP_Request2::METHOD_GET): HTTP_Request2
+    private function http(): Client
     {
-        $request = new HTTP_Request2($url, $method);
-        $request->setConfig([
-            'ssl_verify_peer' => true,
-            'ssl_verify_host' => true,
-            'follow_redirects' => true,
-            'timeout'          => 10,
-            'connect_timeout'  => 5,
+        if ($this->http instanceof Client) {
+            return $this->http;
+        }
+
+        $this->http = new Client([
+            'verify'          => true,
+            'timeout'         => 10,
+            'connect_timeout' => 5,
+            'allow_redirects' => true,
+            'http_errors'     => false,
+            'headers'         => [
+                'User-Agent' => 'DataIndex/1.0',
+            ],
         ]);
-        return $request;
+
+        return $this->http;
     }
 
     /**
@@ -46,6 +59,8 @@ class apiRequest
      *
      * The VAT number is sanitised to digits only before being placed into
      * the URL so a caller can't smuggle in path segments.
+     *
+     * @return string|false
      */
     public function vatNumber(string $vat_number)
     {
@@ -57,11 +72,19 @@ class apiRequest
         $url = 'https://api.service.hmrc.gov.uk/organisations/vat/check-vat-number/lookup/' . $vat_number;
 
         try {
-            $request = $this->buildRequest($url);
-            $response = $request->send();
-            if ($response->getStatus() === 200) {
-                return $response->getBody();
+            $response = $this->http()->request('GET', $url);
+            $status   = $response->getStatusCode();
+
+            if ($status === 200) {
+                return (string) $response->getBody();
             }
+
+            if ($status === 429) {
+                error_log('apiRequest::vatNumber: HMRC rate limit (429)');
+            } elseif ($status >= 400) {
+                error_log('apiRequest::vatNumber: HTTP ' . $status);
+            }
+
             return false;
         } catch (Throwable $exception) {
             error_log('apiRequest::vatNumber failed: ' . $exception->getMessage());
@@ -71,6 +94,8 @@ class apiRequest
 
     /**
      * Fetch a company's officers from the Companies House API.
+     *
+     * @return string|null
      */
     public function getDirectors(string $company_number)
     {
@@ -82,6 +107,8 @@ class apiRequest
 
     /**
      * Fetch a company's filing history from the Companies House API.
+     *
+     * @return string|null
      */
     public function getFiling(string $company_number)
     {
@@ -93,6 +120,12 @@ class apiRequest
 
     /**
      * Shared helper for authenticated Companies House calls.
+     *
+     * Returns the response body on 200/404. Returns null on rate limits,
+     * server errors, or transport failures. Filing history does not fall
+     * back to stored rows; officer lookups may still use the local cache.
+     *
+     * @return string|null
      */
     private function companiesHouse(string $path, string $context)
     {
@@ -104,16 +137,25 @@ class apiRequest
         $url = 'https://api.company-information.service.gov.uk' . $path;
 
         try {
-            $request = $this->buildRequest($url);
-            $request->setHeader([
-                'Content-Length' => 0,
-                'Content-Type'   => 'application/json; charset=utf-8',
+            $response = $this->http()->request('GET', $url, [
+                'auth' => [COMPANIES_HOUSE_API_KEY, ''],
+                'headers' => [
+                    'Accept' => 'application/json',
+                ],
             ]);
-            $request->setAuth(COMPANIES_HOUSE_API_KEY, '', HTTP_Request2::AUTH_BASIC);
+            $status = $response->getStatusCode();
 
-            $response = $request->send();
-            // The CH API returns useful JSON even on non-200 (404 etc.), so pass it back.
-            return $response->getBody();
+            if ($status === 200 || $status === 404) {
+                return (string) $response->getBody();
+            }
+
+            if ($status === 429) {
+                error_log($context . ': Companies House rate limit (429)');
+            } else {
+                error_log($context . ': Companies House HTTP ' . $status);
+            }
+
+            return null;
         } catch (Throwable $exception) {
             error_log($context . ': ' . $exception->getMessage());
             return null;
@@ -130,9 +172,8 @@ class apiRequest
              . '%22&hl=en-GB&gl=GB&ceid=GB:en';
 
         try {
-            $request = $this->buildRequest($url);
-            $response = $request->send();
-            return $response->getBody();
+            $response = $this->http()->request('GET', $url);
+            return (string) $response->getBody();
         } catch (Throwable $exception) {
             error_log('apiRequest::googleNews failed: ' . $exception->getMessage());
             return null;

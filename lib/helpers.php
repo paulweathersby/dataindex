@@ -70,6 +70,7 @@ if (!function_exists('routeIsAllowed')) {
             'no-results',
             'postalcode',
             'postcode-data',
+            'privacy',
             'resources',
             'sic_code',
             'vat-number-search',

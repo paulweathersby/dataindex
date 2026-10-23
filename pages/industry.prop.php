@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-$sector = preg_replace('/[^A-Za-z]/', '', (string) ($pathArray['sector'] ?? ''));
+$sector = preg_replace('/[^A-Za-z]/', '', (string) ($pathArray['sector'] ?? '')) ?? '';
 $sector = strtoupper(substr($sector, 0, 1));
 
 $sector_data = $app->query(

@@ -458,6 +458,23 @@ hr { border: 0; border-top: 1px solid var(--c-border); margin: 2rem 0; }
 .page-header .breadcrumbs a { color: #dee5f0; }
 .page-header .breadcrumbs a:hover { color: #fff; }
 
+.legal {
+    max-width: 46rem;
+}
+.legal h2 {
+    margin-top: 2.25rem;
+    margin-bottom: .75rem;
+}
+.legal ul {
+    margin: .75rem 0 1rem;
+    padding-left: 1.25rem;
+}
+.legal li + li { margin-top: .45rem; }
+.legal .data-table { margin: 1rem 0 1.25rem; }
+.legal code {
+    font-size: .9em;
+}
+
 /* --------------------------------------------------------------------------
    Tabs (replaces legacy jQueryUI #tabs markup)
    -------------------------------------------------------------------------- */
@@ -686,6 +703,11 @@ hr { border: 0; border-top: 1px solid var(--c-border); margin: 2rem 0; }
     flex-wrap: wrap;
     font-size: .85rem;
     color: #8894a7;
+}
+.site-footer__bottom span:last-child {
+    display: inline-flex;
+    gap: 1rem;
+    flex-wrap: wrap;
 }
 
 .social-list { display: flex; gap: .5rem; }

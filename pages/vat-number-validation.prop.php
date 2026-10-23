@@ -27,15 +27,15 @@ if ($action === 'search' && $vat_number !== '' && $message === '') {
     $api     = new apiRequest($app);
     $dataOps = new dataOps($app);
 
-    $vat_number = preg_replace('/^GB/', '', $vat_number);
+    $vat_number = $dataOps->normalizeVatNumber($vat_number);
+    $cached     = $dataOps->loadVatFromDatabase($vat_number);
+    $idata      = $dataOps->fetchVatRecord($vat_number, $api);
 
-    $results = $api->vatNumber($vat_number);
+    if (!$idata && $cached) {
+        $idata = $cached;
+    }
 
-    if ($results) {
-        $jdata = json_decode((string) $results);
-        $idata = $dataOps->processVatResults($jdata);
-        $dataOps->saveVatNumber($idata);
-    } else {
+    if (!$idata) {
         $message = 'A company matching the VAT number GB' . $vat_number . ' was not found.';
     }
 }

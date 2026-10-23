@@ -94,7 +94,8 @@ define('MONGO_PORT',     (int) env('MONGO_PORT', '27017'));
 define('MONGO_DATABASE', env('MONGO_DATABASE', ''));
 
 // --------------------------------------------------------------------------
-// Auth0 (kept for future use – SDK is currently commented out in public/index.php)
+// Auth0 credentials are read from the environment for a future login
+// integration. The SDK is not installed.
 // --------------------------------------------------------------------------
 
 define('AUTH0_DOMAIN',        env('AUTH0_DOMAIN', ''));

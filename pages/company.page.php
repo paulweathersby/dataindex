@@ -33,7 +33,6 @@ $hasSic    = !empty($sic_data['code']);
         <div class="tabs" data-tabs>
             <ul class="tabs__nav" role="tablist">
                 <li><a href="#overview" role="tab" class="is-active" aria-selected="true">Overview</a></li>
-                <li><a href="#people" role="tab">People</a></li>
                 <li><a href="#financial" role="tab">Financials</a></li>
                 <li><a href="#filing-history" role="tab">Filing History</a></li>
             </ul>
@@ -137,125 +136,6 @@ $hasSic    = !empty($sic_data['code']);
                 <?php endif; ?>
             </article>
 
-            <!-- ======================================================== People ======================================================== -->
-            <article id="people" class="tabs__panel" role="tabpanel">
-                <h3 class="mt-0">Persons of Significant Control</h3>
-                <p class="text-muted">Declared owners and their nature of control.</p>
-
-                <ul class="record-list">
-                    <?php while ($pdata = $psc_query->fetch(PDO::FETCH_ASSOC)): ?>
-                        <li class="record">
-                            <div class="record__title">
-                                <?php echo e($pdata['name']); ?>
-                                <?php if (!empty($pdata['dob_month']) && !empty($pdata['dob_year'])): ?>
-                                    <span class="record__meta">
-                                        DOB <?php echo e($pdata['dob_month']); ?>/<?php echo e($pdata['dob_year']); ?>
-                                    </span>
-                                <?php endif; ?>
-                            </div>
-                            <div class="record__body">
-                                <?php
-                                $addr = array_filter([
-                                    $pdata['premises']       ?? '',
-                                    $pdata['address_line_1'] ?? '',
-                                    $pdata['locality']       ?? '',
-                                    $pdata['postal_code']    ?? '',
-                                    $pdata['country']        ?? '',
-                                ], static function ($v) { return $v !== '' && $v !== null; });
-                                echo e(implode(', ', $addr));
-                                ?>
-                                <br>
-                                <?php
-                                $notified = !empty($pdata['notified_on'])
-                                    ? date_format(date_create((string) $pdata['notified_on']), 'd/m/Y')
-                                    : '';
-                                ?>
-                                <span class="text-muted">
-                                    <?php echo e($notified); ?>
-                                    — <?php echo e(ucwords(str_replace('-', ' ', (string) ($pdata['kind'] ?? '')))); ?>
-                                </span><br>
-                                <?php echo e(ucwords(str_replace(['-', ','], [' ', ', '], (string) ($pdata['natures_of_control'] ?? '')))); ?>
-                            </div>
-                        </li>
-                    <?php endwhile; ?>
-                </ul>
-
-                <h3 class="mt-4">Officers</h3>
-                <p class="text-muted">Directors, secretaries, and other appointed officers.</p>
-
-                <ul class="record-list">
-                    <?php foreach ($idata as $data): ?>
-                        <li class="record">
-                            <div class="record__title">
-                                <?php
-                                if (!empty($data['registration_number'])) {
-                                    echo e($data['name'] . ' (' . $data['registration_number'] . ')');
-                                } elseif (!empty($data['name']) && strpos((string) $data['name'], ',') !== false) {
-                                    $parts = explode(',', (string) $data['name']);
-                                    echo e(trim($parts[1] ?? '') . ' ' . ucfirst(strtolower(trim($parts[0] ?? ''))));
-                                } else {
-                                    echo e($data['name'] ?? '');
-                                }
-                                ?>
-                                <?php if (!empty($data['dob_month']) && !empty($data['dob_year'])): ?>
-                                    <span class="record__meta">
-                                        DOB <?php echo e($data['dob_month']); ?>/<?php echo e($data['dob_year']); ?>
-                                    </span>
-                                <?php endif; ?>
-                                <?php if (empty($data['resigned_on'])): ?>
-                                    <span class="badge badge--success">Active</span>
-                                <?php else: ?>
-                                    <span class="badge badge--danger">Resigned</span>
-                                <?php endif; ?>
-                            </div>
-                            <div class="record__body">
-                                <?php
-                                $role = ucwords(str_replace('-', ' ', (string) ($data['officer_role'] ?? '')));
-                                $appointed = !empty($data['appointed_on']) ? date_format(date_create((string) $data['appointed_on']), 'd/m/Y') : '';
-                                $end = !empty($data['resigned_on']) ? date_format(date_create((string) $data['resigned_on']), 'd/m/Y') : 'Present';
-                                ?>
-                                <strong><?php echo e($role); ?></strong>
-                                <span class="text-muted">(<?php echo e($appointed); ?> – <?php echo e($end); ?>)</span><br>
-
-                                <?php if (!empty($data['nationality'])): ?>
-                                    <span class="text-muted">Nationality:</span> <?php echo e($data['nationality']); ?><br>
-                                <?php endif; ?>
-                                <?php if (!empty($data['country_of_residence'])): ?>
-                                    <span class="text-muted">Country of residence:</span> <?php echo e($data['country_of_residence']); ?><br>
-                                <?php endif; ?>
-                                <?php if (!empty($data['occupation'])): ?>
-                                    <span class="text-muted">Occupation:</span> <?php echo e($data['occupation']); ?><br>
-                                <?php endif; ?>
-
-                                <?php
-                                $oAddr = array_filter([
-                                    $data['premises']       ?? '',
-                                    $data['address_line_1'] ?? '',
-                                    $data['locality']       ?? '',
-                                ], static function ($v) { return $v !== '' && $v !== null; });
-                                if ($oAddr):
-                                ?>
-                                    <?php echo e(implode(', ', $oAddr)); ?>
-                                <?php endif; ?>
-
-                                <?php if (!empty($data['postal_code'])): ?>
-                                    <?php if (($data['country_of_residence'] ?? '') === 'United Kingdom'): ?>
-                                        <a href="/postalcode/postcode/<?php echo eUrl($dataOps->pcode2string($data['postal_code'])); ?>">
-                                            <?php echo e($data['postal_code']); ?>
-                                        </a>
-                                    <?php else: ?>
-                                        <?php echo e($data['postal_code']); ?>
-                                    <?php endif; ?>
-                                <?php endif; ?>
-                                <?php if (!empty($data['country'])): ?>
-                                    <?php echo e($data['country']); ?>
-                                <?php endif; ?>
-                            </div>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
-            </article>
-
             <!-- ======================================================== Financials ======================================================== -->
             <article id="financial" class="tabs__panel" role="tabpanel">
                 <div class="panel">
@@ -311,7 +191,10 @@ $hasSic    = !empty($sic_data['code']);
 
             <!-- ======================================================== Filing History ======================================================== -->
             <article id="filing-history" class="tabs__panel" role="tabpanel">
-                <p class="text-muted">Documents filed by the company.</p>
+                <p class="text-muted">Documents returned by the Companies House filing-history API.</p>
+                <?php if ($fdata === []): ?>
+                    <p>No filing history is available from Companies House for this company.</p>
+                <?php else: ?>
                 <ul class="record-list">
                     <?php foreach ($fdata as $data): ?>
                         <li class="record">
@@ -325,34 +208,25 @@ $hasSic    = !empty($sic_data['code']);
                                     <?php echo e($data['type'] ?? 'Filing'); ?>
                                 </a>
                                 <span class="record__meta">
-                                    <?php echo e(!empty($data['date']) ? date_format(date_create((string) $data['date']), 'd/m/Y') : ''); ?>
+                                    <?php
+                                    $filedOn = '';
+                                    if (!empty($data['date'])) {
+                                        $filedAt = date_create((string) $data['date']);
+                                        $filedOn = $filedAt instanceof DateTimeInterface
+                                            ? $filedAt->format('d/m/Y')
+                                            : (string) $data['date'];
+                                    }
+                                    echo e($filedOn);
+                                    ?>
                                 </span>
                             </div>
                             <div class="record__body">
                                 <strong><?php echo e(ucwords(str_replace(['-', ','], [' ', ', '], (string) ($data['description'] ?? '')))); ?></strong>
-                                <?php foreach ([
-                                    'Old Address'        => $data['old_address']        ?? '',
-                                    'New Address'        => $data['new_address']        ?? '',
-                                    'Officer Name'       => $data['officer_name']       ?? '',
-                                ] as $label => $value): ?>
-                                    <?php if ($value !== ''): ?>
-                                        <br><span class="text-muted"><?php echo e($label); ?>:</span> <?php echo e($value); ?>
-                                    <?php endif; ?>
-                                <?php endforeach; ?>
-                                <?php foreach ([
-                                    'Appointment Date' => $data['appointment_date'] ?? null,
-                                    'Termination Date' => $data['termination_date'] ?? null,
-                                    'Change Date'      => $data['change_date']      ?? null,
-                                ] as $label => $value): ?>
-                                    <?php if (!empty($value)): ?>
-                                        <br><span class="text-muted"><?php echo e($label); ?>:</span>
-                                        <?php echo e(date_format(date_create((string) $value), 'd/m/Y')); ?>
-                                    <?php endif; ?>
-                                <?php endforeach; ?>
                             </div>
                         </li>
                     <?php endforeach; ?>
                 </ul>
+                <?php endif; ?>
             </article>
         </div>
     </div>

@@ -36,20 +36,6 @@ $sectorGroups = [
                 <h4>Data Index</h4>
                 <p>UK company data indexed and accessible. Find information about UK registered
                    companies, validate VAT numbers, and explore open data at postcode level.</p>
-                <ul class="social-list mt-2" aria-label="Social links">
-                    <li>
-                        <a href="https://www.twitter.com/dataindexonline" target="_blank" rel="noopener"
-                           aria-label="Twitter">
-                            <i class="fa fa-twitter" aria-hidden="true"></i>
-                        </a>
-                    </li>
-                    <li>
-                        <a href="https://www.linkedin.com/company/dataindex" target="_blank" rel="noopener"
-                           aria-label="LinkedIn">
-                            <i class="fa fa-linkedin" aria-hidden="true"></i>
-                        </a>
-                    </li>
-                </ul>
             </div>
 
             <?php foreach ($sectorGroups as $i => $group): ?>
@@ -71,6 +57,7 @@ $sectorGroups = [
         <div class="site-footer__bottom">
             <span>&copy; <?php echo date('Y'); ?> Data Index. All rights reserved.</span>
             <span>
+                <a href="/privacy">Privacy policy</a>
                 <a href="/">www.dataindex.online</a>
             </span>
         </div>

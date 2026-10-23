@@ -36,11 +36,6 @@ if (!empty($sic_data['section'])) {
     )->fetch(PDO::FETCH_ASSOC) ?: [];
 }
 
-$psc_query = $app->query(
-    "SELECT * FROM psc WHERE company_number = :cn AND ceased_on IS NULL",
-    [':cn' => $company_number]
-);
-
 $fin_query = $app->query(
     "SELECT * FROM financials WHERE companyNumber = :cn",
     [':cn' => $company_number]
@@ -49,22 +44,19 @@ $fin_query = $app->query(
 $api     = new apiRequest($app);
 $dataOps = new dataOps($app);
 
-$cdata = $api->getDirectors($comp_data['CompanyNumber']);
-$jdata = json_decode((string) $cdata);
-$idata = $dataOps->processOfficerResults($jdata);
-$dataOps->saveOfficers($idata, $comp_data['CompanyNumber']);
-
-$fidata = $api->getFiling($comp_data['CompanyNumber']);
-$fdata  = $dataOps->processFilingResults(json_decode((string) $fidata));
-$dataOps->saveFilings($fdata, $comp_data['CompanyNumber']);
+$fdata = $dataOps->fetchFilingsForCompany($comp_data['CompanyNumber'], $api);
 
 // --- Page meta --------------------------------------------------------------
 
-$pageTitle = $comp_data['CompanyName'] . ' ' . $comp_data['CompanyNumber'];
-$canonical = SITE_URL . 'company/number/' . $comp_data['CompanyNumber'];
+$companyName   = (string) ($comp_data['CompanyName'] ?? '');
+$companyNumber = (string) ($comp_data['CompanyNumber'] ?? '');
+$pageTitle = trim($companyName . ' ' . $companyNumber);
+$canonical = SITE_URL . 'company/number/' . rawurlencode($companyNumber);
 
-$place = $comp_data['RegAddress_Town'] !== '' ? $comp_data['RegAddress_Town'] : 'UK';
-$pageDescription = 'Information about ' . $comp_data['CompanyName']
-    . ' with registration number ' . $comp_data['CompanyNumber']
+$town  = trim((string) ($comp_data['RegAddress_Town'] ?? ''));
+$place = $town !== '' ? $town : 'UK';
+$sicDescription = trim((string) ($sic_data['description'] ?? ''));
+$pageDescription = 'Information about ' . $companyName
+    . ' with registration number ' . $companyNumber
     . ' based in ' . $place
-    . (isset($sic_data['description']) ? ' and operating in ' . $sic_data['description'] : '');
+    . ($sicDescription !== '' ? ' and operating in ' . $sicDescription : '');

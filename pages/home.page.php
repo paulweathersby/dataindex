@@ -2,7 +2,7 @@
     <div class="container">
         <h1>UK company data, instantly</h1>
         <p>Search the UK register by company name, number, postcode or VAT
-           number — then dig into officers, filings, and financials.</p>
+           number — then dig into filings and financials.</p>
 
         <form data-search
               data-endpoint="/typeahead.php"
@@ -43,8 +43,8 @@
             <article class="card card--feature">
                 <span class="card__icon"><i class="fa fa-database" aria-hidden="true"></i></span>
                 <h4>Company Data</h4>
-                <p>Names, registered addresses, filing history, directors, PSCs and financial
-                   snapshots for every active UK company.</p>
+                <p>Names, registered addresses, filing history and financial snapshots
+                   for every active UK company.</p>
             </article>
             <article class="card card--feature">
                 <span class="card__icon"><i class="fa fa-check-circle" aria-hidden="true"></i></span>
@@ -53,10 +53,10 @@
                    the registered business details.</p>
             </article>
             <article class="card card--feature">
-                <span class="card__icon"><i class="fa fa-users" aria-hidden="true"></i></span>
-                <h4>Director Records</h4>
-                <p>Explore company officers and persons of significant control across the UK
-                   register, with cross-links between companies.</p>
+                <span class="card__icon"><i class="fa fa-file-text-o" aria-hidden="true"></i></span>
+                <h4>Filing History</h4>
+                <p>Accounts, confirmation statements and other documents filed with
+                   Companies House, in one timeline.</p>
             </article>
         </div>
     </div>
@@ -82,8 +82,8 @@
                 <h4 class="mt-0">What you'll find</h4>
                 <ul class="stack-tight mt-2" style="list-style:none;padding:0;">
                     <li><i class="fa fa-check" aria-hidden="true" style="color:var(--c-brand);margin-right:.5rem;"></i> Company registrations, status and filing history</li>
-                    <li><i class="fa fa-check" aria-hidden="true" style="color:var(--c-brand);margin-right:.5rem;"></i> Directors, secretaries and persons of significant control</li>
-                    <li><i class="fa fa-check" aria-hidden="true" style="color:var(--c-brand);margin-right:.5rem;"></i> Postcode-level directories of businesses and people</li>
+                    <li><i class="fa fa-check" aria-hidden="true" style="color:var(--c-brand);margin-right:.5rem;"></i> Accounts and confirmation statements</li>
+                    <li><i class="fa fa-check" aria-hidden="true" style="color:var(--c-brand);margin-right:.5rem;"></i> Postcode-level directories of registered businesses</li>
                     <li><i class="fa fa-check" aria-hidden="true" style="color:var(--c-brand);margin-right:.5rem;"></i> HMRC VAT number lookups in real time</li>
                 </ul>
             </div>

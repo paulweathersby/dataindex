@@ -16,11 +16,6 @@ $pcode_data = $app->query(
     [':pcode' => $pcode]
 )->fetch(PDO::FETCH_ASSOC) ?: [];
 
-$psc_query = $app->query(
-    "SELECT * FROM psc WHERE postal_code = :pcode AND ceased_on IS NULL",
-    [':pcode' => $pcode]
-);
-
 $comp_query = $app->query(
     "SELECT * FROM companies WHERE RegAddress_Postcode = :pcode",
     [':pcode' => $pcode]
@@ -28,20 +23,6 @@ $comp_query = $app->query(
 
 $vat_query = $app->query(
     "SELECT * FROM vat_number WHERE postcode = :pcode",
-    [':pcode' => $pcode]
-);
-
-$odata_query = $app->query(
-    "SELECT o.*, c.CompanyName
-     FROM officers o
-     JOIN companies c ON c.CompanyNumber = o.company_number
-     WHERE o.postal_code = :pcode
-       AND o.resigned_on IS NULL",
-    [':pcode' => $pcode]
-);
-
-$pdata_query = $app->query(
-    "SELECT * FROM psc WHERE postal_code = :pcode",
     [':pcode' => $pcode]
 );
 

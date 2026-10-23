@@ -11,107 +11,110 @@ class dataOps {
     }
 
 
-    function processVatResults($jdata){
-
-
-        $idata['vat_number'] = $jdata->target->vatNumber;
-        $idata['company_name'] = $jdata->target->name;
-        if(isset($jdata->target->address->line1)===true){
-            $idata['address1'] = $jdata->target->address->line1;
-        } else {
-            $idata['address1'] = '';
-
+    /**
+     * @return array<string, mixed>|null
+     */
+    function processVatResults($jdata)
+    {
+        if (!is_object($jdata) || !isset($jdata->target) || !is_object($jdata->target)) {
+            return null;
         }
-        if(isset($jdata->target->address->line2)===true){
-            $idata['address2'] = $jdata->target->address->line2;
-        } else {
-            $idata['address2'] = '';
 
-        }
-        if(isset($jdata->target->address->line3)===true){
-            $idata['address3'] = $jdata->target->address->line3;
-        } else {
-            $idata['address3'] = '';
+        $target  = $jdata->target;
+        $address = (isset($target->address) && is_object($target->address)) ? $target->address : null;
 
+        if (!isset($target->vatNumber) || !isset($target->name)) {
+            return null;
         }
-        if(isset($jdata->target->address->line4)===true){
-            $idata['address4'] = $jdata->target->address->line4;
-        } else {
-            $idata['address4'] = '';
 
-        }
-        if(isset($jdata->target->address->line5)===true){
-            $idata['address5'] = $jdata->target->address->line5;
-        } else {
-            $idata['address5'] = '';
-
-        }
-        $idata['postcode'] = $jdata->target->address->postcode;
-        $idata['country_code'] = $jdata->target->address->countryCode;
+        $idata = [];
+        $idata['vat_number']   = $this->normalizeVatNumber((string) $target->vatNumber);
+        $idata['company_name'] = (string) $target->name;
+        $idata['address1']     = ($address && isset($address->line1)) ? (string) $address->line1 : '';
+        $idata['address2']     = ($address && isset($address->line2)) ? (string) $address->line2 : '';
+        $idata['address3']     = ($address && isset($address->line3)) ? (string) $address->line3 : '';
+        $idata['address4']     = ($address && isset($address->line4)) ? (string) $address->line4 : '';
+        $idata['address5']     = ($address && isset($address->line5)) ? (string) $address->line5 : '';
+        $idata['postcode']     = ($address && isset($address->postcode)) ? (string) $address->postcode : '';
+        $idata['country_code'] = ($address && isset($address->countryCode)) ? (string) $address->countryCode : '';
 
         return $idata;
-
-
-
     }
 
 
-    function saveVatNumber($idata){
+    function saveVatNumber($idata)
+    {
+        $idata['vat_number'] = $this->normalizeVatNumber((string) ($idata['vat_number'] ?? ''));
+        if ($idata['vat_number'] === '') {
+            return false;
+        }
 
+        $existing = $this->findVatRow($idata['vat_number']);
 
-        $prev_query = $this->app->db->prepare(
-            "SELECT COUNT(1) AS totalrows FROM vat_number WHERE vat_number = ?"
-        );
-        $prev_query->execute([$idata['vat_number']]);
-        $data = $prev_query->fetch(PDO::FETCH_ASSOC);
+        if ($existing) {
+            $update_data = [
+                $idata['company_name'],
+                $idata['address1'],
+                $idata['address2'],
+                $idata['address3'],
+                $idata['address4'],
+                $idata['address5'],
+                $idata['postcode'],
+                $idata['country_code'],
+                $existing['vat_number'],
+            ];
 
-       
-
-        if($data['totalrows'] > 0){
-            #update
-            $update_data = array($idata['company_name'],$idata['address1'],$idata['address2'],$idata['address3'],$idata['address4'],$idata['address5'],$idata['postcode'],$idata['country_code'],$idata['vat_number']);
-
-            $sql = "UPDATE vat_number SET company_name=?, address1=?, address2=?, address3=?, address4=?, address5=?, postcode=?, country_code=? WHERE vat_number=?";
-
-
+            $sql = 'UPDATE vat_number SET company_name=?, address1=?, address2=?, address3=?, address4=?, address5=?, postcode=?, country_code=? WHERE vat_number=?';
             $query = $this->app->db->prepare($sql);
             $query->execute($update_data);
-
         } else {
-            #insert
-            $insert_data = array($idata['vat_number'],$idata['company_name'],$idata['address1'],$idata['address2'],$idata['address3'],$idata['address4'],$idata['address5'],$idata['postcode'],$idata['country_code']);
+            $insert_data = [
+                $idata['vat_number'],
+                $idata['company_name'],
+                $idata['address1'],
+                $idata['address2'],
+                $idata['address3'],
+                $idata['address4'],
+                $idata['address5'],
+                $idata['postcode'],
+                $idata['country_code'],
+            ];
 
-            $sql = "INSERT INTO vat_number (vat_number, company_name, address1, address2, address3, address4, address5, postcode, country_code) VALUES (?, ?, ?, ? ,?, ?, ?, ?, ?)";
+            $sql = 'INSERT INTO vat_number (vat_number, company_name, address1, address2, address3, address4, address5, postcode, country_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
             $query = $this->app->db->prepare($sql);
             $query->execute($insert_data);
-
-
-
         }
 
         return true;
+    }
 
+    /**
+     * Digits-only UK VAT number (no GB prefix) for API calls and lookups.
+     */
+    function normalizeVatNumber(string $vat_number): string
+    {
+        $vat = strtoupper(preg_replace('/[^A-Z0-9]/', '', $vat_number) ?? '');
+        return preg_replace('/^GB/', '', $vat) ?? '';
     }
 
 
     function processOfficerResults($jdata){
 
-        if (isset($jdata->items)) {
-            $items = $jdata->items;
-            // Further processing of $items
-        } else {
-            // Handle the case where $items does not exist
-            $items = [];
-        }
-        
+        $items = (is_object($jdata) && isset($jdata->items) && is_array($jdata->items))
+            ? $jdata->items
+            : [];
 
         $idata = [];
 
         foreach($items AS $data){
 
+            if (!is_object($data)) {
+                continue;
+            }
+
             $output = [];
 
-            $output['name'] = $data->name;
+            $output['name'] = $data->name ?? '';
             if(isset($data->appointed_on)===true){
                 $output['appointed_on'] = $data->appointed_on;
             } else {
@@ -166,22 +169,22 @@ class dataOps {
                 $output['dob_year'] = '';            
             }
 
-            if(isset($data->identification)===true){
+            $output['registration_number'] = '';
+            $output['identification_type'] = '';
+            if (isset($data->identification->registration_number)) {
                 $output['registration_number'] = $data->identification->registration_number;
+            }
+            if (isset($data->identification->identification_type)) {
                 $output['identification_type'] = $data->identification->identification_type;
-                
-            } else {
-                $output['registration_number'] = '';
-                $output['identification_type'] = '';            
             }
 
-            if(isset($data->links)===true){
+            $output['links_appointments'] = '';
+            $output['links_self'] = '';
+            if (isset($data->links->officer->appointments)) {
                 $output['links_appointments'] = $data->links->officer->appointments;
+            }
+            if (isset($data->links->self)) {
                 $output['links_self'] = $data->links->self;
-                
-            } else {
-                $output['links_appointments'] = '';
-                $output['links_self'] = '';            
             }
 
             if(isset($data->address)===true){
@@ -245,7 +248,15 @@ class dataOps {
 
     function saveOfficers($idata,$company_number){
 
+        if (!is_array($idata)) {
+            return;
+        }
+
         foreach($idata AS $row){
+
+            if (!is_array($row)) {
+                continue;
+            }
 
             $prev_query = $this->app->db->prepare(
                 "SELECT COUNT(1) AS totalrows FROM officers
@@ -255,7 +266,7 @@ class dataOps {
             $data = $prev_query->fetch(PDO::FETCH_ASSOC);
 
 
-            if($data['totalrows'] > 0){
+            if(is_array($data) && (int) $data['totalrows'] > 0){
                 #update
                 $update_data = array($row['name'],$row['registration_number'],$row['identification_type'],$row['country_of_residence'],$row['nationality'],$row['occupation'],$row['premises'],$row['address_line_1'],$row['locality'],$row['postal_code'],$row['country'],$row['links_appointments'],$row['links_self'],$row['appointed_on'],$row['resigned_on'],$row['dob_month'],$row['dob_year'],$company_number,$row['name'],$row['officer_role']);
 
@@ -282,17 +293,19 @@ class dataOps {
 
     function processFilingResults($fdata){
 
-        if (isset($fdata->items)) {
-            $items = $fdata->items;
-            // Further processing of $items
-        } else {
-            // Handle the case where $items does not exist
-            $items = [];
-        }
+        $items = (is_object($fdata) && isset($fdata->items) && is_array($fdata->items))
+            ? $fdata->items
+            : [];
 
         $idata = [];
 
         foreach($items AS $data){
+
+            if (!is_object($data)) {
+                continue;
+            }
+
+            $output = [];
 
             if(isset($data->action_date)===true){
                 $output['action_date'] = $data->action_date;
@@ -425,36 +438,184 @@ class dataOps {
 
     }
 
-    function saveFilings($idata,$company_number){
+    /**
+     * Officers from Companies House when available; otherwise from the local cache.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    function fetchOfficersForCompany(string $company_number, apiRequest $api): array
+    {
+        $raw = $api->getDirectors($company_number);
 
-        foreach($idata AS $row){
-
-            $prev_query = $this->app->db->prepare(
-                "SELECT COUNT(1) AS totalrows FROM filings
-                 WHERE company_number = ? AND barcode = ?"
-            );
-            $prev_query->execute([$company_number, $row['barcode']]);
-            $data = $prev_query->fetch(PDO::FETCH_ASSOC);
-
-
-            if($data['totalrows'] == 0){
-
-
-                #insert
-                $insert_data = array($company_number,$row['action_date'],$row['category'],$row['date'],$row['description'],$row['link_self'],$row['link_metadata'],$row['type'],$row['pages'],$row['barcode'],$row['transaction_id'],$row['made_up_date'],$row['termination_date'],$row['officer_name'],$row['appointment_date'],$row['change_date'],$row['old_address'],$row['new_address']);
-
-                $sql = "INSERT INTO filings (company_number,action_date,category,date,description,link_self,link_metadata,`type`,pages,barcode,transaction_id,made_up_date,termination_date,officer_name,appointment_date,change_date,old_address,new_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-               
-                $query = $this->app->db->prepare($sql);
-                $query->execute($insert_data);
-
-
+        if ($raw !== null && $raw !== '') {
+            $jdata = json_decode($raw);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $idata = $this->processOfficerResults($jdata);
+                $this->saveOfficers($idata, $company_number);
+                return $idata;
             }
-
         }
 
+        return $this->loadOfficersFromDatabase($company_number);
     }
 
+    /**
+     * Filing history from the Companies House API only.
+     * The local filings table is not read or written.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    function fetchFilingsForCompany(string $company_number, apiRequest $api): array
+    {
+        $raw = $api->getFiling($company_number);
+
+        if ($raw === null || $raw === '') {
+            return [];
+        }
+
+        $fdata = json_decode($raw);
+        if (json_last_error() !== JSON_ERROR_NONE || !is_object($fdata)) {
+            return [];
+        }
+
+        return $this->processFilingResults($fdata);
+    }
+
+    /**
+     * Load cached VAT data from the database, then try HMRC to refresh.
+     * If the API is unavailable or returns an unusable response, the cached row is used.
+     *
+     * @return array<string, mixed>|null
+     */
+    function fetchVatRecord(string $vat_number, apiRequest $api): ?array
+    {
+        $vat_number = $this->normalizeVatNumber($vat_number);
+        if ($vat_number === '') {
+            return null;
+        }
+
+        $cached = $this->loadVatFromDatabase($vat_number);
+
+        $results = $api->vatNumber($vat_number);
+
+        if ($results !== false && $results !== null && $results !== '') {
+            $jdata = json_decode((string) $results);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $idata = $this->processVatResults($jdata);
+                if ($idata !== null && trim((string) ($idata['company_name'] ?? '')) !== '') {
+                    $this->saveVatNumber($idata);
+                    return $idata;
+                }
+            }
+        }
+
+        return $cached;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    function loadOfficersFromDatabase(string $company_number): array
+    {
+        $stmt = $this->app->query(
+            'SELECT * FROM officers WHERE company_number = :cn ORDER BY appointed_on DESC, name ASC',
+            [':cn' => $company_number]
+        );
+
+        $rows = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $rows[] = [
+                'name'                  => $row['name']                  ?? '',
+                'appointed_on'          => $row['appointed_on']          ?? null,
+                'resigned_on'           => $row['resigned_on']           ?? null,
+                'country_of_residence'  => $row['country_of_residence']  ?? '',
+                'nationality'           => $row['nationality']           ?? '',
+                'occupation'            => $row['occupation']            ?? '',
+                'officer_role'          => $row['officer_role']          ?? '',
+                'dob_month'             => $row['dob_month']             ?? '',
+                'dob_year'              => $row['dob_year']              ?? '',
+                'registration_number'   => $row['registration_number']   ?? '',
+                'identification_type'   => $row['identification_type']   ?? '',
+                'links_appointments'    => $row['links_appointments']    ?? '',
+                'links_self'            => $row['links_self']            ?? '',
+                'premises'              => $row['premises']              ?? '',
+                'address_line_1'        => $row['address_line_1']        ?? '',
+                'postal_code'           => $row['postal_code']           ?? '',
+                'country'               => $row['country']               ?? '',
+                'locality'              => $row['locality']              ?? '',
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    function loadVatFromDatabase(string $vat_number): ?array
+    {
+        $row = $this->findVatRow($vat_number);
+
+        return $row ? $this->mapVatRow($row) : null;
+    }
+
+    /**
+     * Find a VAT row regardless of GB prefix / spacing stored in the database.
+     *
+     * @return array<string, mixed>|null
+     */
+    function findVatRow(string $vat_number): ?array
+    {
+        $normalized = $this->normalizeVatNumber($vat_number);
+        if ($normalized === '') {
+            return null;
+        }
+
+        $candidates = array_unique(array_filter([
+            $vat_number,
+            $normalized,
+            'GB' . $normalized,
+        ]));
+
+        foreach ($candidates as $candidate) {
+            $row = $this->app->query(
+                'SELECT * FROM vat_number WHERE vat_number = :vn LIMIT 1',
+                [':vn' => $candidate]
+            )->fetch(PDO::FETCH_ASSOC);
+
+            if ($row) {
+                return $row;
+            }
+        }
+
+        $row = $this->app->query(
+            "SELECT * FROM vat_number
+             WHERE REPLACE(REPLACE(UPPER(TRIM(vat_number)), 'GB', ''), ' ', '') = :norm
+             LIMIT 1",
+            [':norm' => $normalized]
+        )->fetch(PDO::FETCH_ASSOC);
+
+        return $row ?: null;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function mapVatRow(array $row): array
+    {
+        return [
+            'vat_number'   => $this->normalizeVatNumber((string) ($row['vat_number'] ?? '')),
+            'company_name' => $row['company_name'] ?? '',
+            'address1'     => $row['address1']     ?? '',
+            'address2'     => $row['address2']     ?? '',
+            'address3'     => $row['address3']     ?? '',
+            'address4'     => $row['address4']     ?? '',
+            'address5'     => $row['address5']     ?? '',
+            'postcode'     => $row['postcode']     ?? '',
+            'country_code' => $row['country_code'] ?? '',
+        ];
+    }
 
     function checkCompanyExists($company_number){
 
@@ -465,7 +626,7 @@ class dataOps {
         $prev_query->execute([$company_number]);
         $data = $prev_query->fetch(PDO::FETCH_ASSOC);
 
-        if($data['totalrows'] > 0){
+        if(is_array($data) && (int) $data['totalrows'] > 0){
             return true;
         } else {
             return false;
@@ -478,6 +639,7 @@ class dataOps {
 
     function cleanName($company){
 
+        $company = (string) $company;
         $company = str_replace(" LTD","",$company);
         $company = str_replace(" LIMITED","",$company);
         $company = str_replace(" LLP","",$company);
@@ -488,7 +650,7 @@ class dataOps {
 
     function pcode2String($postcode){
 
-        return strtolower(str_replace(" ","-",$postcode));
+        return strtolower(str_replace(" ","-", (string) $postcode));
 
 
 
@@ -499,7 +661,7 @@ class dataOps {
     function string2pcode($string){
 
 
-        return strtoupper(str_replace("-"," ",$string));
+        return strtoupper(str_replace("-"," ", (string) $string));
 
 
     }
