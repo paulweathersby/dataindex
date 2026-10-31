@@ -34,6 +34,7 @@ $hasSic    = !empty($sic_data['code']);
             <ul class="tabs__nav" role="tablist">
                 <li><a href="#overview" role="tab" class="is-active" aria-selected="true">Overview</a></li>
                 <li><a href="#financial" role="tab">Financials</a></li>
+                <li><a href="#shareholders" role="tab">Shareholders</a></li>
                 <li><a href="#filing-history" role="tab">Filing History</a></li>
             </ul>
 
@@ -138,55 +139,38 @@ $hasSic    = !empty($sic_data['code']);
 
             <!-- ======================================================== Financials ======================================================== -->
             <article id="financial" class="tabs__panel" role="tabpanel">
-                <div class="panel">
-                    <table class="kv-table">
-                        <tr>
-                            <td>Account Reference Date</td>
-                            <td><?php echo e(($comp_data['Accounts_AccountRefDay'] ?? '') . '/' . ($comp_data['Accounts_AccountRefMonth'] ?? '')); ?></td>
-                        </tr>
-                        <tr>
-                            <td>Accounts Category</td>
-                            <td><?php echo e(ucwords(strtolower((string) ($comp_data['Accounts_AccountCategory'] ?? '')))); ?></td>
-                        </tr>
-                        <tr>
-                            <td>Latest Accounts</td>
-                            <td><?php echo e($comp_data['Accounts_LastMadeUpDate'] ?? ''); ?></td>
-                        </tr>
-                        <tr>
-                            <td>Next Accounts Due</td>
-                            <td><?php echo e($comp_data['Accounts_NextDueDate'] ?? ''); ?></td>
-                        </tr>
-                    </table>
-                </div>
+                <p class="text-muted">
+                    Press Run Financial Analysis to load a comparison of the latest accounts.
+                    You will see the main figures for up to the last three years, with one column for each year.
+                    The first run can take a minute.
+                </p>
+                <p>
+                    <button type="button"
+                            class="btn btn-primary"
+                            id="run-financial-analysis"
+                            data-company="<?php echo eAttr($companyNumber); ?>">
+                        Run Financial Analysis
+                    </button>
+                </p>
+                <div id="financial-analysis-result" aria-live="polite"></div>
+            </article>
 
-                <?php while ($fin_data = $fin_query->fetch(PDO::FETCH_ASSOC)): ?>
-                    <h4 class="mt-4">Filed <?php echo e($fin_data['filed'] ?? ''); ?></h4>
-                    <table class="data-table">
-                        <tbody>
-                            <?php
-                            $rows = [
-                                'Period End'                         => $fin_data['periodDate']                          ?? '',
-                                'Filing Date'                        => $fin_data['filingDate']                          ?? '',
-                                'Cash at Bank in Hand'               => $fin_data['CashBankOnHand']                      ?? '',
-                                'Fixed Assets'                       => $fin_data['FixedAssets']                         ?? '',
-                                'Current Assets'                     => $fin_data['CurrentAssets']                       ?? '',
-                                'Creditors'                          => $fin_data['Creditors']                           ?? '',
-                                'Net Current Assets / Liabilities'   => $fin_data['NetCurrentAssetsLiabilities']         ?? '',
-                                'Total Assets Less Current Liab.'    => $fin_data['TotalAssetsLessCurrentLiabilities']   ?? '',
-                                'Net Assets / Liabilities'           => $fin_data['NetAssetsLiabilities']                ?? '',
-                                'Equity'                             => $fin_data['Equity']                              ?? '',
-                                'Avg Employees During Period'        => $fin_data['AverageNumberEmployeesDuringPeriod']  ?? '',
-                            ];
-                            foreach ($rows as $label => $value):
-                            ?>
-                                <tr>
-                                    <th><?php echo e($label); ?></th>
-                                    <td><?php echo e($value); ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                <?php endwhile; ?>
+            <!-- ======================================================== Shareholders ======================================================== -->
+            <article id="shareholders" class="tabs__panel" role="tabpanel">
+                <p class="text-muted">
+                    Press Find shareholders to load the current shareholders.
+                    You will see each holder’s name and shares. When a shareholder list is not available,
+                    you will see the people with significant control instead. A list already saved for this company appears straight away.
+                </p>
+                <p>
+                    <button type="button"
+                            class="btn btn-primary"
+                            id="find-shareholders"
+                            data-company="<?php echo eAttr($companyNumber); ?>">
+                        Find shareholders
+                    </button>
+                </p>
+                <div id="shareholders-result" aria-live="polite"></div>
             </article>
 
             <!-- ======================================================== Filing History ======================================================== -->

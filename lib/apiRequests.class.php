@@ -24,6 +24,9 @@ class apiRequest
     /** @var Client|null */
     private $http;
 
+    /** @var int|null */
+    private $lastStatus;
+
     public function __construct($app)
     {
         $this->app = $app;
@@ -51,6 +54,11 @@ class apiRequest
         ]);
 
         return $this->http;
+    }
+
+    public function lastStatus(): ?int
+    {
+        return $this->lastStatus;
     }
 
     /**
@@ -119,6 +127,145 @@ class apiRequest
     }
 
     /**
+     * Account filings only, newest first, up to 100 items.
+     * Used to choose annual accounts (type AA) for a financial analysis.
+     *
+     * @return string|null
+     */
+    /**
+     * Filing history for one Companies House category, newest first.
+     *
+     * @return string|null
+     */
+    public function getCategorisedFilingHistory(string $company_number, string $category, int $items)
+    {
+        $allowed = ['confirmation-statement', 'annual-return', 'capital', 'incorporation'];
+        if (!in_array($category, $allowed, true)) {
+            return null;
+        }
+
+        $items = max(1, min(100, $items));
+
+        return $this->companiesHouse(
+            '/company/' . rawurlencode($company_number) . '/filing-history?category=' . $category . '&items_per_page=' . $items,
+            __FUNCTION__
+        );
+    }
+
+    /**
+     * Current and ceased people with significant control.
+     *
+     * @return string|null
+     */
+    public function getPersonsWithSignificantControl(string $company_number)
+    {
+        return $this->companiesHouse(
+            '/company/' . rawurlencode($company_number) . '/persons-with-significant-control?items_per_page=100',
+            __FUNCTION__
+        );
+    }
+
+    public function getAccountsFilingHistory(string $company_number)
+    {
+        return $this->companiesHouse(
+            '/company/' . rawurlencode($company_number) . '/filing-history?category=accounts&items_per_page=100',
+            __FUNCTION__
+        );
+    }
+
+    /**
+     * One filing-history item, including the document metadata link when the
+     * cached filings row does not store it.
+     *
+     * @return string|null
+     */
+    public function getFilingItem(string $company_number, string $transaction_id)
+    {
+        if (!preg_match('/^[A-Za-z0-9_-]{8,64}$/', $transaction_id)) {
+            return null;
+        }
+
+        return $this->companiesHouse(
+            '/company/' . rawurlencode($company_number) . '/filing-history/' . rawurlencode($transaction_id),
+            __FUNCTION__
+        );
+    }
+
+    /**
+     * Download a Companies House document-api resource.
+     * The API key is only sent to that host, and only for a document path.
+     *
+     * @return array{status:int,body:string,content_type:string}|null
+     */
+    public function fetchCompaniesHouseDocument(string $url, string $accept): ?array
+    {
+        $allowedAccept = [
+            'application/json',
+            'application/xhtml+xml',
+            'application/pdf',
+        ];
+        if (!in_array($accept, $allowedAccept, true)) {
+            return null;
+        }
+
+        $parts = parse_url($url);
+        if (!is_array($parts)) {
+            return null;
+        }
+
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        $path = (string) ($parts['path'] ?? '');
+        if (($parts['scheme'] ?? '') !== 'https'
+            || $host !== 'document-api.company-information.service.gov.uk'
+            || !preg_match('#^/document/[A-Za-z0-9_-]+(/content)?$#', $path)
+            || !empty($parts['query'])
+            || !empty($parts['user'])
+        ) {
+            error_log('fetchCompaniesHouseDocument: refused URL host or path');
+            $this->lastStatus = null;
+            return null;
+        }
+
+        if (COMPANIES_HOUSE_API_KEY === '') {
+            error_log('fetchCompaniesHouseDocument: COMPANIES_HOUSE_API_KEY is not configured.');
+            $this->lastStatus = null;
+            return null;
+        }
+
+        try {
+            $response = $this->http()->request('GET', 'https://' . $host . $path, [
+                'auth'    => [COMPANIES_HOUSE_API_KEY, ''],
+                'timeout' => 25,
+                'headers' => [
+                    'Accept' => $accept,
+                ],
+            ]);
+            $status = $response->getStatusCode();
+            $this->lastStatus = $status;
+            $length = (int) $response->getHeaderLine('Content-Length');
+            if ($length > 8000000) {
+                error_log('fetchCompaniesHouseDocument: response larger than 8MB');
+                return null;
+            }
+
+            $body = (string) $response->getBody();
+            if (strlen($body) > 8000000) {
+                return null;
+            }
+
+            return [
+                'status'       => $status,
+                'body'         => $body,
+                'content_type' => strtolower($response->getHeaderLine('Content-Type')),
+            ];
+        } catch (Throwable $exception) {
+            $this->lastStatus = null;
+            error_log('fetchCompaniesHouseDocument: ' . $exception->getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Shared helper for authenticated Companies House calls.
      *
      * Returns the response body on 200/404. Returns null on rate limits,
@@ -131,6 +278,7 @@ class apiRequest
     {
         if (COMPANIES_HOUSE_API_KEY === '') {
             error_log($context . ': COMPANIES_HOUSE_API_KEY is not configured.');
+            $this->lastStatus = null;
             return null;
         }
 
@@ -144,6 +292,7 @@ class apiRequest
                 ],
             ]);
             $status = $response->getStatusCode();
+            $this->lastStatus = $status;
 
             if ($status === 200 || $status === 404) {
                 return (string) $response->getBody();
@@ -157,9 +306,71 @@ class apiRequest
 
             return null;
         } catch (Throwable $exception) {
+            $this->lastStatus = null;
             error_log($context . ': ' . $exception->getMessage());
             return null;
         }
+    }
+
+    /**
+     * Ask OpenAI for a JSON object. The API key is sent only to api.openai.com.
+     * Returns the decoded JSON object from the assistant message, or null.
+     *
+     * @param list<array<string, mixed>> $messages
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>|null
+     */
+    public function openAiJson(array $messages, array $schema, string $schemaName, int $maxTokens = 800): ?array
+    {
+        if (!defined('OPENAI_API_KEY') || trim(OPENAI_API_KEY) === '' || trim(OPENAI_API_KEY) === 'CHANGE_ME') {
+            return null;
+        }
+
+        $model = defined('OPENAI_MODEL') && trim(OPENAI_MODEL) !== '' ? trim(OPENAI_MODEL) : 'gpt-4.1';
+
+        try {
+            $response = $this->http()->request('POST', 'https://api.openai.com/v1/chat/completions', [
+                'timeout' => 90,
+                'headers' => [
+                    'Authorization' => 'Bearer ' . trim(OPENAI_API_KEY),
+                    'Content-Type'  => 'application/json',
+                ],
+                'json' => [
+                    'model' => $model,
+                    'temperature' => 0,
+                    'max_completion_tokens' => max(100, min(4000, $maxTokens)),
+                    'response_format' => [
+                        'type' => 'json_schema',
+                        'json_schema' => [
+                            'name' => $schemaName,
+                            'strict' => true,
+                            'schema' => $schema,
+                        ],
+                    ],
+                    'messages' => $messages,
+                ],
+            ]);
+        } catch (Throwable $exception) {
+            error_log('apiRequest::openAiJson failed: ' . $exception->getMessage());
+            return null;
+        }
+
+        $status = $response->getStatusCode();
+        $body = (string) $response->getBody();
+        if ($status !== 200) {
+            error_log('apiRequest::openAiJson: HTTP ' . $status . ' ' . substr($body, 0, 300));
+            return null;
+        }
+
+        $decoded = json_decode($body, true);
+        $content = $decoded['choices'][0]['message']['content'] ?? null;
+        if (!is_string($content) || $content === '') {
+            return null;
+        }
+
+        $parsed = json_decode($content, true);
+
+        return is_array($parsed) ? $parsed : null;
     }
 
     /**

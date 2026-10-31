@@ -16,6 +16,8 @@ if (!routeIsAllowed($page)) {
     $page = '404';
 }
 
+visitorCheck::guardPage($page);
+
 $propFile = PAGE_PATH . '/' . $page . '.prop.php';
 $pageFile = PAGE_PATH . '/' . $page . '.page.php';
 

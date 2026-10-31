@@ -36,11 +36,6 @@ if (!empty($sic_data['section'])) {
     )->fetch(PDO::FETCH_ASSOC) ?: [];
 }
 
-$fin_query = $app->query(
-    "SELECT * FROM financials WHERE companyNumber = :cn",
-    [':cn' => $company_number]
-);
-
 $api     = new apiRequest($app);
 $dataOps = new dataOps($app);
 

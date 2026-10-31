@@ -27,7 +27,15 @@ if (class_exists(Dotenv\Dotenv::class) && file_exists($rootPath . '/.env')) {
  */
 function env(string $key, ?string $default = null, bool $required = false): ?string
 {
-    $value = $_ENV[$key] ?? $_SERVER[$key] ?? getenv($key);
+    // A value already in the process environment wins. Dotenv's immutable
+    // loader still copies the file into $_ENV when that superglobal was empty.
+    $fromProcess = getenv($key);
+    if (is_string($fromProcess) && $fromProcess !== '') {
+        $value = $fromProcess;
+    } else {
+        $value = $_ENV[$key] ?? $_SERVER[$key] ?? null;
+    }
+
     if ($value === false || $value === null || $value === '') {
         if ($required) {
             http_response_code(500);
@@ -110,6 +118,18 @@ define('AUTH0_BASE_URL',      env('AUTH0_BASE_URL', rtrim(SITE_URL, '/')));
 
 define('COMPANIES_HOUSE_API_KEY', env('COMPANIES_HOUSE_API_KEY', ''));
 
+// Used when Run Financial Analysis reads figures from accounts documents.
+// Leave the key empty to skip OpenAI and use the local reader only.
+define('OPENAI_API_KEY', env('OPENAI_API_KEY', ''));
+define('OPENAI_MODEL', env('OPENAI_MODEL', 'gpt-4.1'));
+
+// Visitor check. Leave either key empty to show the index without the check.
+define('TURNSTILE_SITE_KEY', env('TURNSTILE_SITE_KEY', ''));
+define('TURNSTILE_SECRET_KEY', env('TURNSTILE_SECRET_KEY', ''));
+// Shared with the Cloudflare request-header rule for verified crawlers.
+// Leave empty to keep the visitor check in front of every crawler.
+define('VERIFIED_BOT_SECRET', env('VERIFIED_BOT_SECRET', ''));
+
 // --------------------------------------------------------------------------
 // Analytics (optional; empty strings disable the relevant snippets)
 // --------------------------------------------------------------------------
@@ -142,5 +162,8 @@ require_once LIB_PATH . '/helpers.php';
 require_once LIB_PATH . '/app.class.php';
 require_once LIB_PATH . '/apiRequests.class.php';
 require_once LIB_PATH . '/dataOps.class.php';
+require_once LIB_PATH . '/accountsAnalysis.class.php';
+require_once LIB_PATH . '/shareholderAnalysis.class.php';
+require_once LIB_PATH . '/visitorCheck.class.php';
 
 $app = new app();

@@ -397,6 +397,7 @@ hr { border: 0; border-top: 1px solid var(--c-border); margin: 2rem 0; }
 }
 .btn:hover { text-decoration: none; transform: translateY(-1px); }
 .btn:active { transform: translateY(0); }
+.btn:disabled { opacity: .65; cursor: progress; transform: none; }
 
 .btn-primary { background: var(--c-brand); color: #fff; }
 .btn-primary:hover { background: var(--c-brand-strong); color: #fff; }
@@ -544,6 +545,35 @@ hr { border: 0; border-top: 1px solid var(--c-border); margin: 2rem 0; }
 }
 .data-table tbody tr:last-child td { border-bottom: 0; }
 .data-table tbody tr:hover { background: var(--c-surface-alt); }
+
+.table-scroll { overflow-x: auto; }
+
+.financial-analysis thead th {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: .85rem;
+    color: var(--c-ink);
+    vertical-align: bottom;
+}
+.financial-analysis td.num,
+.financial-analysis th.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.financial-analysis__sub,
+.financial-analysis__filed {
+    display: block;
+    margin-top: .2rem;
+    font-weight: 500;
+    color: var(--c-muted);
+}
+.financial-analysis__link {
+    display: inline-block;
+    margin-top: .35rem;
+    font-weight: 600;
+    text-transform: none;
+}
 
 .kv-table {
     width: 100%;
@@ -763,3 +793,19 @@ hr { border: 0; border-top: 1px solid var(--c-border); margin: 2rem 0; }
 
 /* Legacy escape hatch: any stray <br /> pairs in the old markup don't stack too heavily */
 br + br { display: none; }
+
+.visitor-check {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+}
+.visitor-check__card { width: min(32rem, 100%); text-align: center; }
+.visitor-check__card h1 { margin: 1rem 0 .5rem; font-size: 1.6rem; }
+.visitor-check__widget {
+    display: flex;
+    justify-content: center;
+    min-height: 65px;
+    margin: 1.25rem 0 .5rem;
+}

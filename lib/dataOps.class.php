@@ -637,6 +637,48 @@ class dataOps {
     }
 
 
+    /**
+     * Annual accounts already stored from the Companies House filing history.
+     * The document link is often empty on these rows; the API is used to fill it.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    function loadAnnualAccountFilings(string $company_number): array
+    {
+        try {
+            $stmt = $this->app->query(
+                'SELECT date, type, category, description, link_self, link_metadata,
+                        pages, barcode, transaction_id, made_up_date
+                 FROM filings
+                 WHERE company_number = :cn AND type = :type
+                 ORDER BY made_up_date DESC, date DESC
+                 LIMIT 8',
+                [':cn' => $company_number, ':type' => 'AA']
+            );
+        } catch (Throwable $exception) {
+            error_log('loadAnnualAccountFilings: ' . $exception->getMessage());
+            return [];
+        }
+
+        $rows = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $rows[] = [
+                'date'            => $row['date'] ?? null,
+                'type'            => $row['type'] ?? '',
+                'category'        => $row['category'] ?? '',
+                'description'     => $row['description'] ?? '',
+                'link_self'       => $row['link_self'] ?? '',
+                'link_metadata'   => $row['link_metadata'] ?? '',
+                'pages'           => $row['pages'] ?? '',
+                'barcode'         => $row['barcode'] ?? '',
+                'transaction_id'  => $row['transaction_id'] ?? '',
+                'made_up_date'    => $row['made_up_date'] ?? null,
+            ];
+        }
+
+        return $rows;
+    }
+
     function cleanName($company){
 
         $company = (string) $company;

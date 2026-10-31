@@ -11,6 +11,8 @@ header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: no-store');
 
+visitorCheck::guardApi();
+
 $query = isset($_GET['query']) ? (string) $_GET['query'] : '';
 $query = trim($query);
 

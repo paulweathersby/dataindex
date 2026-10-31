@@ -8,7 +8,7 @@
 <section class="section">
     <div class="container">
         <article class="legal">
-            <p class="text-muted">Last updated: 28 September 2026</p>
+            <p class="text-muted">Last updated: 31 October 2026</p>
 
             <p>This notice explains how Data Index, the operator of dataindex.online (the “site”), uses personal data. It is written for people in the United Kingdom and reflects the UK General Data Protection Regulation (UK GDPR) and the Data Protection Act 2018. Cookies are also covered by the Privacy and Electronic Communications Regulations (PECR).</p>
 
@@ -22,7 +22,7 @@
             <h2>Information published from public registers</h2>
             <p>Most of what the site shows is information about companies and places, taken from public sources:</p>
             <ul>
-                <li><strong>Companies House:</strong> company name, number, status, type, registered office, industry codes, accounts dates and filing history. Filing history is requested from the Companies House API when a company page is opened. We show the document type, date and description returned by that API. We do not keep a local copy of filing history for later display.</li>
+                <li><strong>Companies House:</strong> company name, number, status, type, registered office, industry codes, accounts dates and filing history. Filing history is requested from the Companies House API when a company page is opened. We show the document type, date and description returned by that API. When you choose Run Financial Analysis, we use that filing history, together with filing history already stored for the company, to select up to three annual accounts. We then request those documents from Companies House and show figures taken from them. We do not keep a copy of the accounts documents. When you choose Find shareholders, we use incorporation, confirmation statement, annual return and share-capital filings to read the current holders. If those documents do not name them, we request the people with significant control from Companies House. We store the resulting names and shareholdings, and replace them when a newer filing of that kind appears. We do not keep a copy of those documents.</li>
                 <li><strong>HMRC:</strong> the business name, VAT number and address returned when someone searches for or validates a GB VAT number. We may keep that result so a later lookup can be answered, and we refresh it when HMRC returns a newer result.</li>
                 <li><strong>Postcode data:</strong> location details for a postcode, together with companies and VAT-registered businesses linked to that postcode.</li>
             </ul>
@@ -55,7 +55,7 @@
                         <td>Legitimate interests: providing the lookup you asked for.</td>
                     </tr>
                     <tr>
-                        <td>Keeping the site secure, including the session cookie on the VAT form</td>
+                        <td>Keeping the site secure, including the session cookie on the VAT form and, when it is switched on, a Cloudflare visitor check before the index is shown</td>
                         <td>Legitimate interests: preventing misuse and confirming that form submissions come from the site.</td>
                     </tr>
                     <tr>
@@ -69,12 +69,14 @@
                 </tbody>
             </table>
             <p>You can object to processing that is based on legitimate interests. We will stop unless we have a compelling reason to continue, or we need the data for a legal claim.</p>
-            <p>We do not use personal data for automated decisions that produce legal or similarly significant effects. You do not have to give us personal data to read the public pages. A VAT check only works if you enter a VAT number.</p>
+            <p>We do not use personal data for automated decisions that produce legal or similarly significant effects. You do not create an account to read the site. When the visitor check is switched on, your browser completes that check with Cloudflare before the index is shown. Search and AI crawlers that Cloudflare has verified are allowed through. A VAT check only works if you enter a VAT number.</p>
 
             <h2>Who we share information with</h2>
             <p>We share personal data with the organisations that help us run the site, and only for that purpose:</p>
             <ul>
-                <li><strong>Companies House</strong> and <strong>HMRC</strong>, when the site requests a filing history or a VAT check. They are UK public bodies.</li>
+                <li><strong>Companies House</strong> and <strong>HMRC</strong>, when the site requests a filing history, annual accounts for a financial analysis, or a VAT check. They are UK public bodies.</li>
+                <li><strong>OpenAI</strong>, when Run Financial Analysis or Find shareholders is used and an OpenAI key is configured for the site. The text, page images, or PDF of up to three annual accounts, or of the share filings used to find shareholders, are sent so the figures or holders can be read. The documents are not stored by us for that purpose.</li>
+                <li><strong>Cloudflare</strong>, when the visitor check is switched on. The check runs in your browser. We send Cloudflare the result token so it can tell us whether the check succeeded. We do not send Cloudflare the company pages you then open.</li>
                 <li><strong>Our hosting provider</strong>, which stores the site and its logs.</li>
                 <li><strong>Google</strong>, because the site loads fonts from Google. If Google Analytics is enabled, Google also receives usage data, including your IP address.</li>
                 <li><strong>OpenStreetMap</strong>, when a postcode page shows an embedded map. Your browser connects directly to OpenStreetMap to load that map.</li>
@@ -84,7 +86,7 @@
 
             <h2>Transfers outside the UK</h2>
             <p>Companies House and HMRC process the register lookups in the United Kingdom. Our own hosting is used to serve the site.</p>
-            <p>Google may process font and analytics data in the United States. Where Google is certified, those transfers rely on the UK Extension to the EU-US Data Privacy Framework. OpenReplay’s script is loaded from its content network, which may be outside the UK. OpenStreetMap may handle the map request on infrastructure outside the UK. Where a transfer is not covered by UK adequacy regulations, we rely on the International Data Transfer Agreement or the Addendum to the EU standard contractual clauses.</p>
+            <p>Google may process font and analytics data in the United States. Where Google is certified, those transfers rely on the UK Extension to the EU-US Data Privacy Framework. Cloudflare may process the visitor check in the United States, and where Cloudflare is certified those transfers rely on the same framework. OpenAI may process the accounts pages and share filings sent for an analysis in the United States. OpenReplay’s script is loaded from its content network, which may be outside the UK. OpenStreetMap may handle the map request on infrastructure outside the UK. Where a transfer is not covered by UK adequacy regulations, we rely on the International Data Transfer Agreement or the Addendum to the EU standard contractual clauses.</p>
 
             <h2>How long we keep personal data</h2>
             <ul>
@@ -92,8 +94,11 @@
                 <li><strong>Emails:</strong> until the enquiry is finished. We may keep a record for up to 6 years where the message relates to a legal right, a complaint, or a claim.</li>
                 <li><strong>VAT lookup results:</strong> while we offer VAT search, and replaced when HMRC returns a newer result.</li>
                 <li><strong>Company and postcode records:</strong> while the record remains part of the index.</li>
-                <li><strong>Filing history:</strong> shown from the live Companies House response for that visit. We do not store it for later display.</li>
+                <li><strong>Filing history:</strong> shown from the live Companies House response for that visit. A stored copy of earlier filing history may be used to choose annual accounts when you run a financial analysis.</li>
+                <li><strong>Accounts documents:</strong> requested when you run a financial analysis, read to produce the figures on screen, and not stored afterwards. The resulting summary may be kept temporarily so a repeat request for the same filings can be answered without downloading the documents again.</li>
+                <li><strong>Shareholders:</strong> names, share classes and holdings read from the filings, or the people with significant control when the filings do not list holders. Kept until a newer relevant filing is processed, then replaced. The documents are not stored.</li>
                 <li><strong>Session cookie:</strong> for the browser session.</li>
+                <li><strong>Visitor check:</strong> stored only in a cookie on your device for 24 hours. We do not keep a separate record of the check.</li>
             </ul>
 
             <h2>Your rights</h2>
@@ -112,6 +117,7 @@
             <p>A cookie is a small file stored on your device. PECR treats a cookie that is strictly necessary to provide a service you asked for differently from optional analytics cookies.</p>
             <ul>
                 <li><strong>Session cookie.</strong> Set when you use VAT validation, so we can check the form was sent from this site. It is strictly necessary for that form and lasts for the browser session.</li>
+                <li><strong>Visitor check.</strong> When the check is switched on, a cookie named <code>di_visitor</code> records that this browser passed it. It is strictly necessary for access to the index, lasts for 24 hours, and is not used for advertising.</li>
                 <li><strong>Google Analytics.</strong> Used only when analytics is switched on for the site. Google sets cookies such as <code>_ga</code> to recognise a browser across visits and produce aggregated statistics. You can block cookies in your browser, or use <a href="https://tools.google.com/dlpage/gaoptout" rel="noopener">Google’s Analytics opt-out</a>.</li>
                 <li><strong>OpenReplay.</strong> Used only when session replay is switched on. It records how a page is used, such as navigation and clicks, so we can fix faults. It does not attach the recording to a user account.</li>
             </ul>
