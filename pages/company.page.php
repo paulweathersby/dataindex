@@ -81,6 +81,23 @@ $hasSic    = !empty($sic_data['code']);
                                 </a>
                             </p>
                         <?php endif; ?>
+
+                        <?php
+                        $companiesHouseNumber = rawurlencode((string) $companyNumber);
+                        $companiesHouseCompany = 'https://find-and-update.company-information.service.gov.uk/company/' . $companiesHouseNumber;
+                        ?>
+                        <p class="btn-row">
+                            <a class="btn btn-outline"
+                               href="<?php echo eAttr($companiesHouseCompany); ?>"
+                               target="_blank" rel="noopener">
+                                <i class="fa fa-building" aria-hidden="true"></i> Companies House
+                            </a>
+                            <a class="btn btn-outline"
+                               href="<?php echo eAttr($companiesHouseCompany . '/officers'); ?>"
+                               target="_blank" rel="noopener">
+                                <i class="fa fa-users" aria-hidden="true"></i> People
+                            </a>
+                        </p>
                     </div>
 
                     <div class="panel">
@@ -139,45 +156,160 @@ $hasSic    = !empty($sic_data['code']);
 
             <!-- ======================================================== Financials ======================================================== -->
             <article id="financial" class="tabs__panel" role="tabpanel">
-                <p class="text-muted">
-                    Press Run Financial Analysis to load a comparison of the latest accounts.
-                    You will see the main figures for up to the last three years, with one column for each year.
-                    The first run can take a minute.
+                <?php
+                $financialUpdated = is_array($financialSaved) ? trim((string) ($financialSaved['updated'] ?? '')) : '';
+                ?>
+                <p class="text-muted" id="financial-analysis-intro">
+                    <?php if ($financialUpdated !== ''): ?>
+                        Last updated on <?php echo e($financialUpdated); ?>.
+                        <?php if ($canRefreshAnalysis): ?>
+                            Press Refresh to load the figures again.
+                            You will see the main figures for up to the last three years, with one column for each year.
+                        <?php endif; ?>
+                    <?php elseif ($canRefreshAnalysis): ?>
+                        Press Run Financial Analysis to load a comparison of the latest accounts.
+                        You will see the main figures for up to the last three years, with one column for each year.
+                        The first run can take a minute.
+                    <?php else: ?>
+                        No saved accounts analysis is available for this company.
+                    <?php endif; ?>
                 </p>
-                <p>
-                    <button type="button"
-                            class="btn btn-primary"
-                            id="run-financial-analysis"
-                            data-company="<?php echo eAttr($companyNumber); ?>">
-                        Run Financial Analysis
-                    </button>
-                </p>
-                <div id="financial-analysis-result" aria-live="polite"></div>
+                <?php if ($canRefreshAnalysis): ?>
+                    <p>
+                        <button type="button"
+                                class="btn btn-primary"
+                                id="run-financial-analysis"
+                                data-company="<?php echo eAttr($companyNumber); ?>">
+                            <?php echo $financialUpdated !== '' ? 'Refresh' : 'Run Financial Analysis'; ?>
+                        </button>
+                    </p>
+                <?php endif; ?>
+                <div id="financial-analysis-result" aria-live="polite">
+                    <?php if (is_array($financialSaved)): ?>
+                        <p><?php echo e($financialSaved['summary'] ?? ''); ?></p>
+                        <?php
+                        $periods = is_array($financialSaved['periods'] ?? null) ? $financialSaved['periods'] : [];
+                        $figureRows = is_array($financialSaved['rows'] ?? null) ? $financialSaved['rows'] : [];
+                        ?>
+                        <?php if ($periods !== [] && $figureRows !== []): ?>
+                            <div class="table-scroll">
+                                <table class="data-table financial-analysis">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">Figure</th>
+                                            <?php foreach ($periods as $period): ?>
+                                                <th scope="col" class="num">
+                                                    <?php echo e($period['title'] ?? 'Annual accounts'); ?>
+                                                    <?php if (!empty($period['accounts'])): ?>
+                                                        <span class="financial-analysis__sub"><?php echo e($period['accounts']); ?></span>
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($period['filed'])): ?>
+                                                        <span class="financial-analysis__filed"><?php echo e($period['filed']); ?></span>
+                                                    <?php endif; ?>
+                                                    <?php
+                                                    $filingUrl = (string) ($period['url'] ?? '');
+                                                    $filingHost = strtolower((string) parse_url($filingUrl, PHP_URL_HOST));
+                                                    $filingScheme = strtolower((string) parse_url($filingUrl, PHP_URL_SCHEME));
+                                                    if ($filingScheme === 'https' && $filingHost === 'find-and-update.company-information.service.gov.uk'):
+                                                    ?>
+                                                        <a class="financial-analysis__link" href="<?php echo eAttr($filingUrl); ?>" target="_blank" rel="noopener nofollow">View filing</a>
+                                                    <?php endif; ?>
+                                                </th>
+                                            <?php endforeach; ?>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($figureRows as $figure): ?>
+                                            <tr>
+                                                <th scope="row"><?php echo e($figure['label'] ?? ''); ?></th>
+                                                <?php
+                                                $values = is_array($figure['values'] ?? null) ? $figure['values'] : [];
+                                                foreach (array_keys($periods) as $index):
+                                                    $value = $values[$index] ?? '';
+                                                ?>
+                                                    <td class="num"><?php echo e($value !== '' && $value !== null ? $value : '—'); ?></td>
+                                                <?php endforeach; ?>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </div>
             </article>
 
             <!-- ======================================================== Shareholders ======================================================== -->
             <article id="shareholders" class="tabs__panel" role="tabpanel">
-                <p class="text-muted">
-                    Press Find shareholders to load the current shareholdings.
-                    You will see how many shares the company has issued, and each owner’s name, number of shares and percentage.
-                    A list already saved for this company appears straight away.
+                <?php
+                $shareholderUpdated = is_array($shareholderSaved) ? trim((string) ($shareholderSaved['updated'] ?? '')) : '';
+                ?>
+                <p class="text-muted" id="shareholders-intro">
+                    <?php if ($shareholderUpdated !== ''): ?>
+                        Last updated on <?php echo e($shareholderUpdated); ?>.
+                        <?php if ($canRefreshAnalysis): ?>
+                            Press Refresh to read the shareholdings again.
+                            You will see how many shares the company has issued, and each owner’s name, number of shares and percentage.
+                        <?php endif; ?>
+                    <?php elseif ($canRefreshAnalysis): ?>
+                        Press Find shareholders to load the current shareholdings.
+                        You will see how many shares the company has issued, and each owner’s name, number of shares and percentage.
+                        The first run can take a minute.
+                    <?php else: ?>
+                        No saved shareholding is available for this company.
+                    <?php endif; ?>
                 </p>
-                <p>
-                    <button type="button"
-                            class="btn btn-primary"
-                            id="find-shareholders"
-                            data-company="<?php echo eAttr($companyNumber); ?>">
-                        Find shareholders
-                    </button>
-                </p>
-                <div id="shareholders-result" aria-live="polite"></div>
+                <?php if ($canRefreshAnalysis): ?>
+                    <p>
+                        <button type="button"
+                                class="btn btn-primary"
+                                id="find-shareholders"
+                                data-company="<?php echo eAttr($companyNumber); ?>">
+                            <?php echo $shareholderUpdated !== '' ? 'Refresh' : 'Find shareholders'; ?>
+                        </button>
+                    </p>
+                <?php endif; ?>
+                <div id="shareholders-result" aria-live="polite">
+                    <?php if (is_array($shareholderSaved)): ?>
+                        <p><?php echo e($shareholderSaved['summary'] ?? ''); ?></p>
+                        <?php if (!empty($shareholderSaved['shares_issued'])): ?>
+                            <p>Shares issued: <?php echo e($shareholderSaved['shares_issued']); ?></p>
+                        <?php endif; ?>
+                        <?php $holders = is_array($shareholderSaved['holders'] ?? null) ? $shareholderSaved['holders'] : []; ?>
+                        <?php if ($holders !== []): ?>
+                            <div class="table-scroll">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">Shareholder</th>
+                                            <th scope="col">Shares</th>
+                                            <th scope="col">Percentage</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($holders as $holder): ?>
+                                            <tr>
+                                                <th scope="row"><?php echo e($holder['name'] ?? ''); ?></th>
+                                                <td><?php
+                                                    $shares = trim((string) ($holder['shares'] ?? '') . ' ' . (string) ($holder['share_class'] ?? ''));
+                                                    echo e($shares !== '' ? $shares : '—');
+                                                ?></td>
+                                                <td><?php echo e(($holder['percentage'] ?? '') !== '' ? $holder['percentage'] : '—'); ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </div>
             </article>
 
             <!-- ======================================================== Filing History ======================================================== -->
             <article id="filing-history" class="tabs__panel" role="tabpanel">
-                <p class="text-muted">Documents returned by the Companies House filing-history API.</p>
+                <p class="text-muted">Documents filed at Companies House.</p>
                 <?php if ($fdata === []): ?>
-                    <p>No filing history is available from Companies House for this company.</p>
+                    <p>No filing history is available for this company.</p>
                 <?php else: ?>
                 <ul class="record-list">
                     <?php foreach ($fdata as $data): ?>

@@ -101,18 +101,26 @@ class accountsAnalysis
      *   footnotes: list<string>
      * }
      */
-    public function analyse(string $companyNumber): array
+    public function analyse(string $companyNumber, bool $refresh = false): array
     {
+        if (visitorCheck::cacheOnly()) {
+            return $this->savedView($companyNumber)
+                ?? $this->emptyResult('No saved accounts analysis is available for this company.');
+        }
+
         $filings = $this->selectAnnualAccounts($companyNumber);
         if ($filings === []) {
-            return $this->emptyResult(
-                'No annual accounts (type AA) were found for this company at Companies House.'
+            return $this->persist(
+                $companyNumber,
+                $this->emptyResult('No annual accounts (type AA) were found for this company at Companies House.')
             );
         }
 
-        $cached = $this->readCache($companyNumber, $filings);
-        if ($cached !== null) {
-            return $cached;
+        if (!$refresh) {
+            $cached = $this->readCache($companyNumber, $filings);
+            if ($cached !== null) {
+                return $this->persist($companyNumber, $cached);
+            }
         }
 
         $periods = [];
@@ -156,7 +164,89 @@ class accountsAnalysis
             $this->writeCache($companyNumber, $filings, $result);
         }
 
+        return $this->persist($companyNumber, $result);
+    }
+
+    /**
+     * The accounts analysis already saved for this company, without calling an external service.
+     *
+     * @return array{summary:string,periods:array,rows:array,footnotes:array,updated:string}|null
+     */
+    public function savedView(string $companyNumber): ?array
+    {
+        try {
+            $row = $this->app->query(
+                'SELECT result_json, processed_at FROM financial_analyses WHERE company_number = :cn LIMIT 1',
+                [':cn' => $companyNumber]
+            )->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $exception) {
+            error_log('accountsAnalysis saved: ' . $exception->getMessage());
+            $row = null;
+        }
+
+        if (is_array($row) && isset($row['result_json'])) {
+            $decoded = json_decode((string) $row['result_json'], true);
+            if (is_array($decoded) && isset($decoded['summary'])) {
+                $decoded['updated'] = $this->formatUpdated((string) ($row['processed_at'] ?? ''));
+
+                return $decoded;
+            }
+        }
+
+        $cached = $this->readLatestCache($companyNumber);
+        if ($cached === null) {
+            return null;
+        }
+
+        $path = $this->latestCachePath($companyNumber);
+        $mtime = is_file($path) ? filemtime($path) : false;
+        $cached['updated'] = $this->formatUpdated($mtime ? date('Y-m-d H:i:s', $mtime) : '');
+
+        return $this->persist($companyNumber, $cached);
+    }
+
+    /**
+     * @param array{summary:string,periods:array,rows:array,footnotes:array} $result
+     * @return array{summary:string,periods:array,rows:array,footnotes:array,updated:string}
+     */
+    private function persist(string $companyNumber, array $result): array
+    {
+        $stored = $result;
+        unset($stored['updated']);
+        $json = json_encode($stored, JSON_UNESCAPED_UNICODE);
+        if ($json !== false) {
+            try {
+                $this->app->db->prepare(
+                    'INSERT INTO financial_analyses (company_number, result_json, processed_at)
+                     VALUES (:cn, :json, NOW())
+                     ON DUPLICATE KEY UPDATE result_json = VALUES(result_json), processed_at = NOW()'
+                )->execute([
+                    ':cn' => $companyNumber,
+                    ':json' => $json,
+                ]);
+                $result['updated'] = $this->formatUpdated(date('Y-m-d H:i:s'));
+            } catch (Throwable $exception) {
+                error_log('accountsAnalysis persist: ' . $exception->getMessage());
+            }
+        }
+
+        if (!isset($result['updated'])) {
+            $result['updated'] = '';
+        }
+
         return $result;
+    }
+
+    private function formatUpdated(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        $date = date_create($value);
+
+        return $date instanceof DateTimeInterface ? $date->format('j F Y \a\t H:i') : '';
     }
 
     /**
@@ -1438,19 +1528,24 @@ class accountsAnalysis
      * @param list<array<string, mixed>> $filings
      * @return array{summary:string,periods:list<array<string,string|null>>,rows:list<array{label:string,values:list<string|null>}>,footnotes:list<string>}|null
      */
-    private function readCache(string $companyNumber, array $filings): ?array
+    private function readCache(string $companyNumber, array $filings, bool $ignoreExpiry = false): ?array
     {
         $path = $this->cachePath($companyNumber, $filings);
-        if (!is_file($path) || filemtime($path) < time() - self::CACHE_TTL) {
+        if (!is_file($path) || (!$ignoreExpiry && filemtime($path) < time() - self::CACHE_TTL)) {
             return null;
         }
 
-        $decoded = json_decode((string) file_get_contents($path), true);
-        if (!is_array($decoded) || !isset($decoded['rows'], $decoded['periods'], $decoded['summary'])) {
-            return null;
-        }
+        return $this->decodeCacheFile($path);
+    }
 
-        return $decoded;
+    /**
+     * The last analysis saved for this company, including one past the normal expiry.
+     *
+     * @return array{summary:string,periods:list<array<string,string|null>>,rows:list<array{label:string,values:list<string|null>}>,footnotes:list<string>}|null
+     */
+    private function readLatestCache(string $companyNumber): ?array
+    {
+        return $this->decodeCacheFile($this->latestCachePath($companyNumber));
     }
 
     /**
@@ -1465,7 +1560,26 @@ class accountsAnalysis
             return;
         }
 
-        @file_put_contents($path, json_encode($result), LOCK_EX);
+        $json = json_encode($result);
+        @file_put_contents($path, $json, LOCK_EX);
+        @file_put_contents($this->latestCachePath($companyNumber), $json, LOCK_EX);
+    }
+
+    /**
+     * @return array{summary:string,periods:list<array<string,string|null>>,rows:list<array{label:string,values:list<string|null>}>,footnotes:list<string>}|null
+     */
+    private function decodeCacheFile(string $path): ?array
+    {
+        if (!is_file($path)) {
+            return null;
+        }
+
+        $decoded = json_decode((string) file_get_contents($path), true);
+        if (!is_array($decoded) || !isset($decoded['rows'], $decoded['periods'], $decoded['summary'])) {
+            return null;
+        }
+
+        return $decoded;
     }
 
     /**
@@ -1479,6 +1593,13 @@ class accountsAnalysis
         }
 
         return sys_get_temp_dir() . '/dataindex-accounts/' . hash('sha256', $companyNumber . '|' . implode(',', $ids)) . '.json';
+    }
+
+    private function latestCachePath(string $companyNumber): string
+    {
+        $safe = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $companyNumber) ?? '');
+
+        return sys_get_temp_dir() . '/dataindex-accounts/' . $safe . '-latest.json';
     }
 
     /**

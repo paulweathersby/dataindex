@@ -36,8 +36,21 @@ class apiRequest
      * Shared client. TLS verification stays on, and HTTP error statuses are
      * returned to the caller instead of thrown, matching the old PEAR client.
      */
+    /**
+     * Verified crawlers are answered from stored data. No outbound client is
+     * created for them, including from a caller that forgets its own check.
+     */
+    private function cacheOnly(): bool
+    {
+        return visitorCheck::cacheOnly();
+    }
+
     private function http(): Client
     {
+        if ($this->cacheOnly()) {
+            throw new LogicException('Verified crawlers are served from the stored index.');
+        }
+
         if ($this->http instanceof Client) {
             return $this->http;
         }
@@ -73,7 +86,7 @@ class apiRequest
     public function vatNumber(string $vat_number)
     {
         $vat_number = preg_replace('/\D+/', '', $vat_number) ?? '';
-        if ($vat_number === '') {
+        if ($vat_number === '' || $this->cacheOnly()) {
             return false;
         }
 
@@ -93,6 +106,8 @@ class apiRequest
                 error_log('apiRequest::vatNumber: HTTP ' . $status);
             }
 
+            return false;
+        } catch (LogicException $exception) {
             return false;
         } catch (Throwable $exception) {
             error_log('apiRequest::vatNumber failed: ' . $exception->getMessage());
@@ -253,7 +268,8 @@ class apiRequest
             'application/xhtml+xml',
             'application/pdf',
         ];
-        if (!in_array($accept, $allowedAccept, true)) {
+        if ($this->cacheOnly() || !in_array($accept, $allowedAccept, true)) {
+            $this->lastStatus = null;
             return null;
         }
 
@@ -307,6 +323,9 @@ class apiRequest
                 'body'         => $body,
                 'content_type' => strtolower($response->getHeaderLine('Content-Type')),
             ];
+        } catch (LogicException $exception) {
+            $this->lastStatus = null;
+            return null;
         } catch (Throwable $exception) {
             $this->lastStatus = null;
             error_log('fetchCompaniesHouseDocument: ' . $exception->getMessage());
@@ -318,15 +337,18 @@ class apiRequest
      * Shared helper for authenticated Companies House calls.
      *
      * Returns the response body on 200/404. Returns null on rate limits,
-     * server errors, or transport failures. Filing history does not fall
-     * back to stored rows; officer lookups may still use the local cache.
+     * server errors, or transport failures. A null filing-history response
+     * means Companies House is unavailable, and the company page can show
+     * the stored filings instead.
      *
      * @return string|null
      */
     private function companiesHouse(string $path, string $context)
     {
-        if (COMPANIES_HOUSE_API_KEY === '') {
-            error_log($context . ': COMPANIES_HOUSE_API_KEY is not configured.');
+        if ($this->cacheOnly() || COMPANIES_HOUSE_API_KEY === '') {
+            if (COMPANIES_HOUSE_API_KEY === '') {
+                error_log($context . ': COMPANIES_HOUSE_API_KEY is not configured.');
+            }
             $this->lastStatus = null;
             return null;
         }
@@ -354,6 +376,9 @@ class apiRequest
             }
 
             return null;
+        } catch (LogicException $exception) {
+            $this->lastStatus = null;
+            return null;
         } catch (Throwable $exception) {
             $this->lastStatus = null;
             error_log($context . ': ' . $exception->getMessage());
@@ -371,7 +396,7 @@ class apiRequest
      */
     public function openAiJson(array $messages, array $schema, string $schemaName, int $maxTokens = 800): ?array
     {
-        if (!defined('OPENAI_API_KEY') || trim(OPENAI_API_KEY) === '' || trim(OPENAI_API_KEY) === 'CHANGE_ME') {
+        if ($this->cacheOnly() || !defined('OPENAI_API_KEY') || trim(OPENAI_API_KEY) === '' || trim(OPENAI_API_KEY) === 'CHANGE_ME') {
             return null;
         }
 
@@ -399,6 +424,8 @@ class apiRequest
                     'messages' => $messages,
                 ],
             ]);
+        } catch (LogicException $exception) {
+            return null;
         } catch (Throwable $exception) {
             error_log('apiRequest::openAiJson failed: ' . $exception->getMessage());
             return null;
@@ -428,12 +455,18 @@ class apiRequest
      */
     public function googleNews(string $term)
     {
+        if ($this->cacheOnly()) {
+            return null;
+        }
+
         $url = 'https://news.google.com/rss/search?q=%22' . rawurlencode($term)
              . '%22&hl=en-GB&gl=GB&ceid=GB:en';
 
         try {
             $response = $this->http()->request('GET', $url);
             return (string) $response->getBody();
+        } catch (LogicException $exception) {
+            return null;
         } catch (Throwable $exception) {
             error_log('apiRequest::googleNews failed: ' . $exception->getMessage());
             return null;

@@ -281,19 +281,18 @@
 
         analysisButton.addEventListener("click", async () => {
             const company = analysisButton.dataset.company || "";
+            const intro = document.getElementById("financial-analysis-intro");
             if (!company || analysisButton.disabled) return;
 
             analysisButton.disabled = true;
-            const originalLabel = analysisButton.textContent;
+            const previousLabel = analysisButton.textContent;
+            const previousIntro = intro ? intro.textContent : "";
             analysisButton.textContent = "Reading accounts…";
-            analysisResult.replaceChildren();
-            appendText(
-                analysisResult,
-                "p",
-                "text-muted",
-                "Loading the latest accounts. This can take a minute."
-            );
+            if (intro) {
+                intro.textContent = "Loading the latest accounts. This can take a minute.";
+            }
 
+            let refreshed = false;
             try {
                 const response = await fetch("/financial-analysis.php", {
                     method: "POST",
@@ -305,19 +304,28 @@
                 });
                 const data = await response.json();
                 if (!response.ok || data.error) {
-                    analysisResult.replaceChildren();
+                    analysisResult.querySelectorAll(".alert").forEach((el) => el.remove());
+                    if (intro) intro.textContent = previousIntro;
                     const alert = appendText(analysisResult, "p", "alert alert-danger", data.error || "The financial analysis could not be completed.");
                     alert.setAttribute("role", "alert");
                     return;
                 }
                 renderAnalysis(data);
+                refreshed = true;
+                analysisButton.textContent = "Refresh";
+                if (intro) {
+                    intro.textContent = data.updated
+                        ? "Last updated on " + data.updated + ". Press Refresh to load the figures again. You will see the main figures for up to the last three years, with one column for each year."
+                        : "Press Refresh to load the figures again. You will see the main figures for up to the last three years, with one column for each year.";
+                }
             } catch (err) {
-                analysisResult.replaceChildren();
+                analysisResult.querySelectorAll(".alert").forEach((el) => el.remove());
+                if (intro) intro.textContent = previousIntro;
                 const alert = appendText(analysisResult, "p", "alert alert-danger", "The financial analysis could not be completed.");
                 alert.setAttribute("role", "alert");
             } finally {
                 analysisButton.disabled = false;
-                analysisButton.textContent = originalLabel;
+                if (!refreshed) analysisButton.textContent = previousLabel;
             }
         });
     }
@@ -379,19 +387,18 @@
 
         shareholderButton.addEventListener("click", async () => {
             const company = shareholderButton.dataset.company || "";
+            const intro = document.getElementById("shareholders-intro");
             if (!company || shareholderButton.disabled) return;
 
             shareholderButton.disabled = true;
-            const originalLabel = shareholderButton.textContent;
+            const previousLabel = shareholderButton.textContent;
+            const previousIntro = intro ? intro.textContent : "";
             shareholderButton.textContent = "Reading filings…";
-            shareholderResult.replaceChildren();
-            appendText(
-                shareholderResult,
-                "p",
-                "text-muted",
-                "Looking up the shareholders. This can take a minute."
-            );
+            if (intro) {
+                intro.textContent = "Looking up the shareholders. This can take a minute.";
+            }
 
+            let refreshed = false;
             try {
                 const response = await fetch("/shareholders.php", {
                     method: "POST",
@@ -403,19 +410,28 @@
                 });
                 const data = await response.json();
                 if (!response.ok || data.error) {
-                    shareholderResult.replaceChildren();
+                    shareholderResult.querySelectorAll(".alert").forEach((el) => el.remove());
+                    if (intro) intro.textContent = previousIntro;
                     const alert = appendText(shareholderResult, "p", "alert alert-danger", data.error || "The shareholders could not be read.");
                     alert.setAttribute("role", "alert");
                     return;
                 }
                 renderHolders(data);
+                refreshed = true;
+                shareholderButton.textContent = "Refresh";
+                if (intro) {
+                    intro.textContent = data.updated
+                        ? "Last updated on " + data.updated + ". Press Refresh to read the shareholdings again. You will see how many shares the company has issued, and each owner’s name, number of shares and percentage."
+                        : "Press Refresh to read the shareholdings again. You will see how many shares the company has issued, and each owner’s name, number of shares and percentage.";
+                }
             } catch (err) {
-                shareholderResult.replaceChildren();
+                shareholderResult.querySelectorAll(".alert").forEach((el) => el.remove());
+                if (intro) intro.textContent = previousIntro;
                 const alert = appendText(shareholderResult, "p", "alert alert-danger", "The shareholders could not be read.");
                 alert.setAttribute("role", "alert");
             } finally {
                 shareholderButton.disabled = false;
-                shareholderButton.textContent = originalLabel;
+                if (!refreshed) shareholderButton.textContent = previousLabel;
             }
         });
     }

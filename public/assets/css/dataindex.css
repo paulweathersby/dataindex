@@ -418,6 +418,7 @@ hr { border: 0; border-top: 1px solid var(--c-border); margin: 2rem 0; }
     border-color: var(--c-border-strong);
 }
 .btn-outline:hover { background: var(--c-surface-alt); color: var(--c-ink); }
+.btn-row { display: flex; flex-wrap: wrap; gap: .75rem; }
 
 .btn-ghost { background: transparent; color: var(--c-brand); }
 .btn-ghost:hover { background: var(--c-brand-soft); color: var(--c-brand-strong); }

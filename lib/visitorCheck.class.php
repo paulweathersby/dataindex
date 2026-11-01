@@ -21,6 +21,15 @@ class visitorCheck
     }
 
     /**
+     * A crawler Cloudflare has verified may read the stored index only.
+     * It is not allowed to trigger Companies House, HMRC, OpenAI, or Turnstile.
+     */
+    public static function cacheOnly(): bool
+    {
+        return self::verifiedBot();
+    }
+
+    /**
      * Stop a page request that has not passed the check.
      * The privacy policy stays available so the check can be read about first.
      */
@@ -53,7 +62,7 @@ class visitorCheck
      */
     public static function acceptToken(string $token): bool
     {
-        if (!self::enabled() || !self::tokenLooksValid($token)) {
+        if (self::cacheOnly() || !self::enabled() || !self::tokenLooksValid($token)) {
             return false;
         }
 

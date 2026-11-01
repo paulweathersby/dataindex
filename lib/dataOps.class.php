@@ -445,6 +445,10 @@ class dataOps {
      */
     function fetchOfficersForCompany(string $company_number, apiRequest $api): array
     {
+        if (visitorCheck::cacheOnly()) {
+            return $this->loadOfficersFromDatabase($company_number);
+        }
+
         $raw = $api->getDirectors($company_number);
 
         if ($raw !== null && $raw !== '') {
@@ -460,25 +464,103 @@ class dataOps {
     }
 
     /**
-     * Filing history from the Companies House API only.
-     * The local filings table is not read or written.
+     * Filing history for a company page.
+     *
+     * A verified crawler always receives the stored filings. Everyone else
+     * receives them when they were fetched within the last 24 hours, and
+     * also when Companies House cannot be reached. A successful API response
+     * is used when the stored copy is older than that. This does not write
+     * the filings table.
      *
      * @return array<int, array<string, mixed>>
      */
     function fetchFilingsForCompany(string $company_number, apiRequest $api): array
     {
+        if (visitorCheck::cacheOnly() || $this->filingsFetchedWithin($company_number, 24)) {
+            return $this->loadFilingsFromDatabase($company_number);
+        }
+
         $raw = $api->getFiling($company_number);
+        if (is_string($raw) && $raw !== '') {
+            $fdata = json_decode($raw);
+            if (json_last_error() === JSON_ERROR_NONE && is_object($fdata) && isset($fdata->items) && is_array($fdata->items)) {
+                return $this->processFilingResults($fdata);
+            }
+        }
 
-        if ($raw === null || $raw === '') {
+        return $this->loadFilingsFromDatabase($company_number);
+    }
+
+    /**
+     * True when the newest stored filing for this company was fetched within
+     * the given number of hours. The comparison uses the database clock,
+     * which is the clock that wrote filings.updated.
+     */
+    function filingsFetchedWithin(string $company_number, int $hours): bool
+    {
+        $hours = max(1, $hours);
+
+        try {
+            $row = $this->app->query(
+                'SELECT MAX(updated) >= (NOW() - INTERVAL ' . $hours . ' HOUR) AS fresh
+                 FROM filings
+                 WHERE company_number = :cn',
+                [':cn' => $company_number]
+            )->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $exception) {
+            error_log('filingsFetchedWithin: ' . $exception->getMessage());
+            return false;
+        }
+
+        return isset($row['fresh']) && (int) $row['fresh'] === 1;
+    }
+
+    /**
+     * Stored filing history for one company, newest filing first.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    function loadFilingsFromDatabase(string $company_number): array
+    {
+        try {
+            $stmt = $this->app->query(
+                'SELECT action_date, category, date, description, link_self, link_metadata,
+                        type, pages, barcode, transaction_id, made_up_date, termination_date,
+                        officer_name, appointment_date, change_date, old_address, new_address
+                 FROM filings
+                 WHERE company_number = :cn
+                 ORDER BY date DESC, id DESC',
+                [':cn' => $company_number]
+            );
+        } catch (Throwable $exception) {
+            error_log('loadFilingsFromDatabase: ' . $exception->getMessage());
             return [];
         }
 
-        $fdata = json_decode($raw);
-        if (json_last_error() !== JSON_ERROR_NONE || !is_object($fdata)) {
-            return [];
+        $rows = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $rows[] = [
+                'action_date'      => $row['action_date'] ?? null,
+                'category'         => $row['category'] ?? '',
+                'date'             => $row['date'] ?? null,
+                'description'      => $row['description'] ?? '',
+                'link_self'        => $row['link_self'] ?? '',
+                'link_metadata'    => $row['link_metadata'] ?? '',
+                'type'             => $row['type'] ?? '',
+                'pages'            => $row['pages'] ?? '',
+                'barcode'          => $row['barcode'] ?? '',
+                'transaction_id'   => $row['transaction_id'] ?? '',
+                'made_up_date'     => $row['made_up_date'] ?? null,
+                'termination_date' => $row['termination_date'] ?? null,
+                'officer_name'     => $row['officer_name'] ?? '',
+                'appointment_date' => $row['appointment_date'] ?? null,
+                'change_date'      => $row['change_date'] ?? null,
+                'old_address'      => $row['old_address'] ?? '',
+                'new_address'      => $row['new_address'] ?? '',
+            ];
         }
 
-        return $this->processFilingResults($fdata);
+        return $rows;
     }
 
     /**
@@ -495,6 +577,9 @@ class dataOps {
         }
 
         $cached = $this->loadVatFromDatabase($vat_number);
+        if (visitorCheck::cacheOnly()) {
+            return $cached;
+        }
 
         $results = $api->vatNumber($vat_number);
 

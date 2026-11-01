@@ -30,6 +30,12 @@ if (!requestIsSameOrigin()) {
 
 visitorCheck::guardApi();
 
+if (visitorCheck::cacheOnly()) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Only a confirmed visitor can refresh this.']);
+    exit;
+}
+
 $raw = file_get_contents('php://input', false, null, 0, 2000);
 $payload = json_decode(is_string($raw) ? $raw : '', true);
 $companyNumber = '';
@@ -72,7 +78,7 @@ set_time_limit(180);
 
 try {
     $analysis = new shareholderAnalysis($app, new apiRequest($app));
-    $result = $analysis->analyse($companyNumber);
+    $result = $analysis->analyse($companyNumber, true);
 } catch (Throwable $exception) {
     error_log('shareholders: ' . $exception->getMessage());
     http_response_code(500);

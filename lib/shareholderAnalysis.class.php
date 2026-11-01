@@ -51,14 +51,31 @@ class shareholderAnalysis
      *   holders: list<array<string, string>>
      * }
      */
-    public function analyse(string $companyNumber): array
+    public function analyse(string $companyNumber, bool $refresh = false): array
     {
+        if (visitorCheck::cacheOnly()) {
+            $stored = $this->savedView($companyNumber);
+            if ($stored !== null) {
+                return $stored;
+            }
+
+            return $this->present(
+                'none',
+                'No saved shareholding is available for this company.',
+                [],
+                true,
+                null
+            );
+        }
+
         $this->companyNumber = $companyNumber;
         $filings = $this->relevantFilings($companyNumber);
         $marker = $this->marker($filings);
-        $stored = $this->storedResult($companyNumber, $marker);
-        if ($stored !== null) {
-            return $stored;
+        if (!$refresh) {
+            $stored = $this->storedResult($companyNumber, $marker);
+            if ($stored !== null) {
+                return $stored;
+            }
         }
 
         $chosen = $this->chooseFilings($filings);
@@ -95,7 +112,7 @@ class shareholderAnalysis
             $summary = 'These are the current shareholders, with the number of shares issued and each owner’s holding.';
             $this->save($companyNumber, $marker, 'documents', $summary, $holders, $issued);
 
-            return $this->present('documents', $summary, $holders, false, $issued);
+            return $this->withUpdated($this->present('documents', $summary, $holders, false, $issued));
         }
 
         $documentsRead = is_array($parsed);
@@ -119,13 +136,13 @@ class shareholderAnalysis
                 : 'The share filings could not be read. These are the people with significant control recorded at Companies House.';
             $this->save($companyNumber, $marker, 'psc', $summary, $holders, $issued);
 
-            return $this->present('psc', $summary, $holders, false, $issued);
+            return $this->withUpdated($this->present('psc', $summary, $holders, false, $issued));
         }
 
         $summary = 'The filings do not show who owns the shares, and Companies House has no current person with significant control.';
         $this->save($companyNumber, $marker, 'none', $summary, [], $issued);
 
-        return $this->present('none', $summary, [], false, $issued);
+        return $this->withUpdated($this->present('none', $summary, [], false, $issued));
     }
 
     /**
@@ -808,6 +825,54 @@ class shareholderAnalysis
             return null;
         }
 
+        return $this->presentStored($snapshot, $companyNumber, true);
+    }
+
+    /**
+     * The shareholding already saved for this company, without calling an external service.
+     *
+     * @return array{summary:string,cached:bool,source:string,shares_issued:string,holders:list<array<string,string>>,updated:string}|null
+     */
+    public function savedView(string $companyNumber): ?array
+    {
+        return $this->anyStoredResult($companyNumber);
+    }
+
+    /**
+     * The saved shareholding for a verified crawler, whatever filings it was read from.
+     *
+     * @return array{summary:string,cached:bool,source:string,shares_issued:string,holders:list<array<string,string>>,updated:string}|null
+     */
+    private function anyStoredResult(string $companyNumber): ?array
+    {
+        try {
+            $snapshot = $this->app->query(
+                'SELECT source, summary, shares_issued, processed_at FROM shareholder_snapshots
+                 WHERE company_number = :cn LIMIT 1',
+                [':cn' => $companyNumber]
+            )->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $exception) {
+            error_log('shareholderAnalysis snapshot: ' . $exception->getMessage());
+            return null;
+        }
+
+        if (!$snapshot) {
+            return null;
+        }
+
+        return $this->presentStored($snapshot, $companyNumber, false);
+    }
+
+    /**
+     * @param array<string, mixed> $snapshot
+     * @return array{summary:string,cached:bool,source:string,shares_issued:string,holders:list<array<string,string>>}|null
+     */
+    private function presentStored(array $snapshot, string $companyNumber, bool $noteFreshness): ?array
+    {
+        if ($snapshot === []) {
+            return null;
+        }
+
         try {
             $stmt = $this->app->query(
                 'SELECT holder_name, share_class, shares, percentage, holding_note, source_type, source_date
@@ -834,18 +899,47 @@ class shareholderAnalysis
             ];
         }
 
-        $processed = $this->dateOrEmpty($snapshot['processed_at'] ?? '');
-        $summary = 'No newer share filing since this was last read'
-            . ($processed !== '' ? ' on ' . $this->formatDate($processed) : '')
-            . '. ' . (string) $snapshot['summary'];
+        $summary = (string) $snapshot['summary'];
+        if ($noteFreshness) {
+            $processed = $this->dateOrEmpty($snapshot['processed_at'] ?? '');
+            $summary = 'No newer share filing since this was last read'
+                . ($processed !== '' ? ' on ' . $this->formatDate($processed) : '')
+                . '. ' . $summary;
+        }
 
-        return $this->present(
+        $result = $this->present(
             (string) $snapshot['source'],
             $summary,
             $holders,
             true,
             $this->normaliseIssued($snapshot['shares_issued'] ?? null)
         );
+        $result['updated'] = $this->formatUpdated((string) ($snapshot['processed_at'] ?? ''));
+
+        return $result;
+    }
+
+    /**
+     * @param array<string, mixed> $result
+     * @return array<string, mixed>
+     */
+    private function withUpdated(array $result): array
+    {
+        $result['updated'] = $this->formatUpdated(date('Y-m-d H:i:s'));
+
+        return $result;
+    }
+
+    private function formatUpdated(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        $date = date_create($value);
+
+        return $date instanceof DateTimeInterface ? $date->format('j F Y \a\t H:i') : '';
     }
 
     /**

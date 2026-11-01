@@ -41,10 +41,11 @@ $dataOps = new dataOps($app);
 
 $fdata = $dataOps->fetchFilingsForCompany($comp_data['CompanyNumber'], $api);
 
-// --- Page meta --------------------------------------------------------------
-
 $companyName   = (string) ($comp_data['CompanyName'] ?? '');
 $companyNumber = (string) ($comp_data['CompanyNumber'] ?? '');
+$canRefreshAnalysis = !visitorCheck::cacheOnly();
+$shareholderSaved = (new shareholderAnalysis($app, $api))->savedView($companyNumber);
+$financialSaved = (new accountsAnalysis($app, $api, $dataOps))->savedView($companyNumber);
 $pageTitle = trim($companyName . ' ' . $companyNumber);
 $canonical = SITE_URL . 'company/number/' . rawurlencode($companyNumber);
 
