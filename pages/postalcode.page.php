@@ -60,6 +60,69 @@
             <?php endif; ?>
         </div>
 
+        <h3 class="mt-4">Properties sold in <?php echo e($pcodeDisplay); ?></h3>
+        <p class="text-muted">Price paid data from HM Land Registry, newest sale first.</p>
+        <?php
+        $propertyTypes = [
+            'D' => 'Detached',
+            'S' => 'Semi-detached',
+            'T' => 'Terraced',
+            'F' => 'Flat',
+            'O' => 'Other',
+        ];
+        $tenures = [
+            'F' => 'Freehold',
+            'L' => 'Leasehold',
+        ];
+        $sales = $price_query->fetchAll(PDO::FETCH_ASSOC);
+        ?>
+        <?php if ($sales === []): ?>
+            <p>No sales are recorded for this postcode.</p>
+        <?php else: ?>
+            <div class="table-scroll">
+                <table class="data-table price-paid">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th class="num">Price</th>
+                            <th>Address</th>
+                            <th>Property</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($sales as $sale):
+                            $soldOn = strtotime((string) ($sale['date_of_transfer'] ?? ''));
+                            $addressParts = [];
+                            foreach (['saon', 'paon', 'street', 'locality', 'town_city', 'district', 'county'] as $part) {
+                                $value = trim((string) ($sale[$part] ?? ''));
+                                if ($value === '') {
+                                    continue;
+                                }
+                                $previous = $addressParts[count($addressParts) - 1] ?? '';
+                                if ($previous !== '' && strcasecmp($previous, $value) === 0) {
+                                    continue;
+                                }
+                                $addressParts[] = $value;
+                            }
+                            $details = array_filter([
+                                $propertyTypes[$sale['property_type'] ?? ''] ?? '',
+                                $tenures[$sale['duration'] ?? ''] ?? '',
+                                (($sale['old_new'] ?? '') === 'Y') ? 'New build' : '',
+                                (($sale['ppd_category_type'] ?? '') === 'B') ? 'Additional price paid' : '',
+                            ], static function ($value) { return $value !== ''; });
+                        ?>
+                            <tr>
+                                <td><?php echo e($soldOn ? date('j F Y', $soldOn) : ''); ?></td>
+                                <td class="num"><?php echo e('£' . number_format((int) ($sale['price'] ?? 0))); ?></td>
+                                <td><?php echo e(implode(', ', $addressParts)); ?></td>
+                                <td><?php echo e(implode(', ', $details)); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+
         <h3 class="mt-4">Registered companies in <?php echo e($pcodeDisplay); ?></h3>
         <ul class="record-list">
             <?php while ($comp_data = $comp_query->fetch(PDO::FETCH_ASSOC)): ?>

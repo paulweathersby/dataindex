@@ -251,7 +251,7 @@ class visitorCheck
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <meta name="robots" content="noindex, nofollow">
     <title>Confirm you are a visitor – Data Index</title>
-    <link rel="stylesheet" href="/assets/css/dataindex.css">
+    <link rel="stylesheet" href="' . eAttr(assetUrl('assets/css/dataindex.css')) . '">
 </head>
 <body>
 <main class="visitor-check">

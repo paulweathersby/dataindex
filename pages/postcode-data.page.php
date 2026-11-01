@@ -14,6 +14,24 @@
                data associated with each. Understand what's available at postcode level.</p>
         </div>
 
+        <form data-search
+              data-endpoint="/postcode-typeahead.php"
+              data-target="/postalcode/postcode/{id}"
+              data-label-field="postcode"
+              data-id-field="slug"
+              data-detail-fields="location,country"
+              class="search search--left" role="search" aria-label="Postcode search">
+            <div class="search__field">
+                <i class="fa fa-search" aria-hidden="true"></i>
+                <label class="sr-only" for="postcode-search">Postcode</label>
+                <input id="postcode-search" type="text" class="search__input"
+                       placeholder="Enter a postcode…" autocomplete="off" spellcheck="false"
+                       inputmode="text" maxlength="8">
+                <button class="search__button" type="submit">Search</button>
+            </div>
+            <ul class="search__results" role="listbox"></ul>
+        </form>
+
         <div class="grid grid-3">
             <?php
             $tiles = [

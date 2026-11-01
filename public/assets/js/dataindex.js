@@ -65,6 +65,10 @@
         const target     = form.dataset.target;
         const labelField = form.dataset.labelField;
         const idField    = form.dataset.idField;
+        const detailFields = (form.dataset.detailFields || "")
+            .split(",")
+            .map((name) => name.trim())
+            .filter(Boolean);
 
         if (!input || !results || !endpoint || !target) return;
 
@@ -72,16 +76,30 @@
         let selected = -1;
 
         const render = (items) => {
-            results.innerHTML = "";
+            results.replaceChildren();
             if (!items.length) {
                 results.style.display = "none";
                 return;
             }
             items.forEach((item, idx) => {
                 const li = document.createElement("li");
-                li.textContent = item[labelField] || "";
                 li.dataset.id = item[idField] || "";
                 li.setAttribute("role", "option");
+                if (detailFields.length) {
+                    const label = document.createElement("span");
+                    label.className = "search__result-label";
+                    label.textContent = item[labelField] || "";
+                    li.appendChild(label);
+                    const meta = document.createElement("span");
+                    meta.className = "search__result-meta";
+                    meta.textContent = detailFields
+                        .map((field) => item[field] || "")
+                        .filter(Boolean)
+                        .join(", ");
+                    li.appendChild(meta);
+                } else {
+                    li.textContent = item[labelField] || "";
+                }
                 li.addEventListener("click", () => navigateTo(li.dataset.id));
                 if (idx === selected) li.setAttribute("aria-selected", "true");
                 results.appendChild(li);
@@ -116,7 +134,7 @@
             const q = input.value.trim();
             clearTimeout(debounce);
             if (q.length < 2) {
-                results.innerHTML = "";
+                results.replaceChildren();
                 results.style.display = "none";
                 return;
             }
@@ -321,6 +339,9 @@
         const renderHolders = (data) => {
             shareholderResult.replaceChildren();
             appendText(shareholderResult, "p", null, data.summary || "");
+            if (data.shares_issued) {
+                appendText(shareholderResult, "p", null, "Shares issued: " + data.shares_issued);
+            }
             const holders = Array.isArray(data.holders) ? data.holders : [];
             if (!holders.length) return;
 
@@ -330,7 +351,7 @@
             table.className = "data-table";
             const thead = document.createElement("thead");
             const headRow = document.createElement("tr");
-            ["Shareholder", "Share class", "Shares", "Percentage", "Holding", "Source"].forEach((label) => {
+            ["Shareholder", "Shares", "Percentage"].forEach((label) => {
                 const th = document.createElement("th");
                 th.scope = "col";
                 th.textContent = label;
@@ -342,8 +363,8 @@
             const tbody = document.createElement("tbody");
             holders.forEach((holder) => {
                 const tr = document.createElement("tr");
-                const source = [holder.source, holder.date].filter(Boolean).join(" · ");
-                [holder.name, holder.share_class, holder.shares, holder.percentage, holder.note, source].forEach((value, index) => {
+                const shares = [holder.shares, holder.share_class].filter(Boolean).join(" ");
+                [holder.name, shares, holder.percentage].forEach((value, index) => {
                     const cell = document.createElement(index === 0 ? "th" : "td");
                     if (index === 0) cell.scope = "row";
                     cell.textContent = value || "—";

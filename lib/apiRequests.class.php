@@ -153,6 +153,33 @@ class apiRequest
     }
 
     /**
+     * One page of filing history. Categories are comma-separated and inclusive.
+     * start_index is the offset into the full result, as required by the list operation.
+     *
+     * @param list<string> $categories
+     * @return string|null
+     */
+    public function getFilingHistoryPage(string $company_number, int $start_index, int $items_per_page, array $categories)
+    {
+        $allowed = ['confirmation-statement', 'annual-return', 'capital', 'incorporation'];
+        $categories = array_values(array_intersect($categories, $allowed));
+        if ($categories === []) {
+            return null;
+        }
+
+        $query = http_build_query([
+            'category' => implode(',', $categories),
+            'items_per_page' => max(1, min(100, $items_per_page)),
+            'start_index' => max(0, $start_index),
+        ], '', '&', PHP_QUERY_RFC3986);
+
+        return $this->companiesHouse(
+            '/company/' . rawurlencode($company_number) . '/filing-history?' . $query,
+            __FUNCTION__
+        );
+    }
+
+    /**
      * Current and ceased people with significant control.
      *
      * @return string|null
@@ -161,6 +188,28 @@ class apiRequest
     {
         return $this->companiesHouse(
             '/company/' . rawurlencode($company_number) . '/persons-with-significant-control?items_per_page=100',
+            __FUNCTION__
+        );
+    }
+
+    /**
+     * One corporate PSC record. $beneficialOwner selects the
+     * corporate-entity-beneficial-owner notification; otherwise the
+     * corporate-entity notification.
+     *
+     * @return string|null
+     */
+    public function getCorporateEntityPsc(string $company_number, string $notification_id, bool $beneficialOwner)
+    {
+        $company_number = strtoupper($company_number);
+        if (!preg_match('/^[A-Z0-9]{1,12}$/', $company_number) || !preg_match('/^[A-Za-z0-9_-]{1,100}$/', $notification_id)) {
+            return null;
+        }
+
+        $kind = $beneficialOwner ? 'corporate-entity-beneficial-owner' : 'corporate-entity';
+
+        return $this->companiesHouse(
+            '/company/' . rawurlencode($company_number) . '/persons-with-significant-control/' . $kind . '/' . rawurlencode($notification_id),
             __FUNCTION__
         );
     }

@@ -158,9 +158,9 @@ $hasSic    = !empty($sic_data['code']);
             <!-- ======================================================== Shareholders ======================================================== -->
             <article id="shareholders" class="tabs__panel" role="tabpanel">
                 <p class="text-muted">
-                    Press Find shareholders to load the current shareholders.
-                    You will see each holder’s name and shares. When a shareholder list is not available,
-                    you will see the people with significant control instead. A list already saved for this company appears straight away.
+                    Press Find shareholders to load the current shareholdings.
+                    You will see how many shares the company has issued, and each owner’s name, number of shares and percentage.
+                    A list already saved for this company appears straight away.
                 </p>
                 <p>
                     <button type="button"

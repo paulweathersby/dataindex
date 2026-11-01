@@ -2,9 +2,10 @@
 /**
  * Reads the current shareholders from Companies House share filings.
  *
- * Forms used: IN01, CS01, AR01, 363, 363a, SH01, SH02, SH03, SH04, SH05,
- * SH06, SH07, SH09 and SH19. OpenAI reads those documents. If they do not
- * name the holders, the persons-with-significant-control API is used.
+ * Forms used: IN01, NEWINC, CS01, AR01, 363, 363a, SH01, SH02, SH03, SH04, SH05,
+ * SH06, SH07, SH09 and SH19. Those documents supply the shares issued and
+ * each owner's holding. The persons-with-significant-control API is used
+ * only when the documents do not show the ownership.
  * The result is stored and reused until a newer relevant filing appears.
  * The documents themselves are not stored.
  */
@@ -19,17 +20,21 @@ class shareholderAnalysis
     /** @var apiRequest */
     private $api;
 
-    private const SNAPSHOT_TYPES = ['IN01', 'CS01', 'AR01', '363', '363A'];
+    private const SNAPSHOT_TYPES = ['IN01', 'NEWINC', 'CS01', 'AR01', '363', '363A'];
     private const CHANGE_TYPES = ['SH01', 'SH02', 'SH03', 'SH04', 'SH05', 'SH06', 'SH07', 'SH09', 'SH19'];
     private const MAX_DOCUMENTS = 5;
+    /** Incorporation forms that list the first shareholders. */
+    private const INCORPORATION_TYPES = ['IN01', 'NEWINC'];
+    /** Annual returns that list the members at that date. */
+    private const RETURN_TYPES = ['AR01', '363', '363A'];
+    /** Bump when the reading changes, so a saved PSC result is read again from the filings. */
+    private const READING_VERSION = '4';
+    /** Filing-history pages are walked until this many items have been reviewed. */
+    private const MAX_FILINGS_REVIEWED = 50;
+    private const FILING_PAGE_SIZE = 25;
 
-    /** @var array<string, int> */
-    private const API_CATEGORIES = [
-        'confirmation-statement' => 25,
-        'annual-return' => 15,
-        'capital' => 25,
-        'incorporation' => 5,
-    ];
+    /** @var list<string> */
+    private const FILING_CATEGORIES = ['confirmation-statement', 'annual-return', 'capital', 'incorporation'];
 
     public function __construct($app, apiRequest $api)
     {
@@ -42,6 +47,7 @@ class shareholderAnalysis
      *   summary: string,
      *   cached: bool,
      *   source: string,
+     *   shares_issued: string,
      *   holders: list<array<string, string>>
      * }
      */
@@ -56,7 +62,7 @@ class shareholderAnalysis
         }
 
         $chosen = $this->chooseFilings($filings);
-        $documents = $this->readDocuments($companyNumber, $chosen);
+        $documents = $this->usefulDocuments($this->readDocuments($companyNumber, $chosen));
         $readable = 0;
         foreach ($documents as $document) {
             if ($document['text'] !== '' || $document['pdf'] !== '' || $document['images'] !== []) {
@@ -72,14 +78,24 @@ class shareholderAnalysis
             }
         }
 
-        if (is_array($parsed) && ($parsed['found'] ?? false) === true) {
-            $holders = $this->normaliseHolders($parsed['holders'], $this->latestSource($chosen));
-            if ($holders !== []) {
-                $summary = 'Shareholders read from the latest share filings at Companies House.';
-                $this->save($companyNumber, $marker, 'documents', $summary, $holders);
-
-                return $this->present('documents', $summary, $holders, false);
+        $holders = [];
+        $issued = $this->issuedFromDocuments($documents);
+        if (is_array($parsed)) {
+            $fromModel = $this->normaliseIssued($parsed['shares_issued'] ?? null);
+            if ($fromModel !== null && ($issued === null || $fromModel > $issued)) {
+                $issued = $fromModel;
             }
+            if (($parsed['found'] ?? false) === true) {
+                $holders = $this->normaliseHolders($parsed['holders'], $this->latestSource($chosen));
+                $this->completeOwnership($holders, $issued);
+            }
+        }
+
+        if ($this->ownershipDetermined($holders) && $this->holdingsCoverIssued($holders, $issued)) {
+            $summary = 'These are the current shareholders, with the number of shares issued and each owner’s holding.';
+            $this->save($companyNumber, $marker, 'documents', $summary, $holders, $issued);
+
+            return $this->present('documents', $summary, $holders, false, $issued);
         }
 
         $documentsRead = is_array($parsed);
@@ -91,24 +107,25 @@ class shareholderAnalysis
                     ? 'The share filings could not be downloaded from Companies House. Please try again in a few minutes.'
                     : 'The share filings could not be read. Please try again in a few minutes.',
                 [],
-                false
+                false,
+                null
             );
         }
 
         $holders = $psc ?? [];
         if ($holders !== []) {
             $summary = $documentsRead
-                ? 'The filings do not list the shareholders. These are the current people with significant control from Companies House.'
-                : 'The filings could not be read, so these are the current people with significant control from Companies House.';
-            $this->save($companyNumber, $marker, 'psc', $summary, $holders);
+                ? 'The filings do not show who currently owns the shares. These are the people with significant control recorded at Companies House.'
+                : 'The share filings could not be read. These are the people with significant control recorded at Companies House.';
+            $this->save($companyNumber, $marker, 'psc', $summary, $holders, $issued);
 
-            return $this->present('psc', $summary, $holders, false);
+            return $this->present('psc', $summary, $holders, false, $issued);
         }
 
-        $summary = 'No shareholder list was found in the filings, and Companies House has no current person with significant control.';
-        $this->save($companyNumber, $marker, 'none', $summary, []);
+        $summary = 'The filings do not show who owns the shares, and Companies House has no current person with significant control.';
+        $this->save($companyNumber, $marker, 'none', $summary, [], $issued);
 
-        return $this->present('none', $summary, [], false);
+        return $this->present('none', $summary, [], false, $issued);
     }
 
     /**
@@ -121,22 +138,8 @@ class shareholderAnalysis
             $merged[$this->filingKey($row)] = $row;
         }
 
-        foreach (self::API_CATEGORIES as $category => $items) {
-            $raw = $this->api->getCategorisedFilingHistory($companyNumber, $category, $items);
-            if (!is_string($raw) || $raw === '') {
-                continue;
-            }
-            $decoded = json_decode($raw);
-            if (!is_object($decoded) || !isset($decoded->items) || !is_array($decoded->items)) {
-                continue;
-            }
-            foreach ($decoded->items as $item) {
-                $row = $this->filingFromApi($item);
-                if ($row === null) {
-                    continue;
-                }
-                $merged[$this->filingKey($row)] = $row;
-            }
+        foreach ($this->pagedApiFilings($companyNumber) as $row) {
+            $merged[$this->filingKey($row)] = $row;
         }
 
         $rows = array_values($merged);
@@ -145,6 +148,51 @@ class shareholderAnalysis
         });
 
         return $rows;
+    }
+
+    /**
+     * Walk the filing-history list, 25 items at a time, and stop after 50.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function pagedApiFilings(string $companyNumber): array
+    {
+        $rows = [];
+        $start = 0;
+        $reviewed = 0;
+
+        while ($reviewed < self::MAX_FILINGS_REVIEWED) {
+            $pageSize = min(self::FILING_PAGE_SIZE, self::MAX_FILINGS_REVIEWED - $reviewed);
+            $raw = $this->api->getFilingHistoryPage($companyNumber, $start, $pageSize, self::FILING_CATEGORIES);
+            if (!is_string($raw) || $raw === '') {
+                break;
+            }
+
+            $decoded = json_decode($raw);
+            if (!is_object($decoded) || !isset($decoded->items) || !is_array($decoded->items) || $decoded->items === []) {
+                break;
+            }
+
+            foreach ($decoded->items as $item) {
+                $reviewed++;
+                $row = $this->filingFromApi($item);
+                if ($row !== null) {
+                    $rows[$this->filingKey($row)] = $row;
+                }
+                if ($reviewed >= self::MAX_FILINGS_REVIEWED) {
+                    break;
+                }
+            }
+
+            $received = count($decoded->items);
+            $start += $received;
+            $total = isset($decoded->total_count) ? (int) $decoded->total_count : $start;
+            if ($received < $pageSize || $start >= $total) {
+                break;
+            }
+        }
+
+        return array_values($rows);
     }
 
     /**
@@ -222,34 +270,57 @@ class shareholderAnalysis
      */
     private function chooseFilings(array $filings): array
     {
-        $snapshot = null;
+        $member = null;
+        $incorporation = null;
+        $changes = [];
+        $confirmations = [];
         foreach ($filings as $filing) {
-            if (in_array($filing['type'], self::SNAPSHOT_TYPES, true)) {
-                $snapshot = $filing;
+            if (in_array($filing['type'], self::RETURN_TYPES, true)) {
+                if ($member === null) {
+                    $member = $filing;
+                }
+            } elseif (in_array($filing['type'], self::INCORPORATION_TYPES, true)) {
+                if ($incorporation === null) {
+                    $incorporation = $filing;
+                }
+            } elseif (in_array($filing['type'], self::CHANGE_TYPES, true)) {
+                $changes[] = $filing;
+            } elseif ($filing['type'] === 'CS01') {
+                $confirmations[] = $filing;
+            }
+        }
+
+        $bases = [];
+        if ($incorporation !== null) {
+            $bases[] = $incorporation;
+        }
+        if ($member !== null) {
+            $bases[] = $member;
+        }
+
+        $oldest = '';
+        foreach ($bases as $base) {
+            $date = (string) $base['date'];
+            if ($oldest === '' || ($date !== '' && strcmp($date, $oldest) < 0)) {
+                $oldest = $date;
+            }
+        }
+
+        $selectedChanges = [];
+        foreach ($changes as $filing) {
+            if ($oldest !== '' && strcmp((string) $filing['date'], $oldest) < 0) {
+                continue;
+            }
+            $selectedChanges[] = $filing;
+            if (count($selectedChanges) >= 3) {
                 break;
             }
         }
 
-        $chosen = [];
-        if ($snapshot !== null) {
-            $chosen[] = $snapshot;
-            $snapshotDate = (string) $snapshot['date'];
-            $changes = 0;
-            foreach ($filings as $filing) {
-                if (!in_array($filing['type'], self::CHANGE_TYPES, true)) {
-                    continue;
-                }
-                if ($snapshotDate !== '' && strcmp((string) $filing['date'], $snapshotDate) < 0) {
-                    continue;
-                }
-                $chosen[] = $filing;
-                $changes++;
-                if ($changes >= self::MAX_DOCUMENTS - 1) {
-                    break;
-                }
-            }
-        } else {
-            $chosen = array_slice($filings, 0, self::MAX_DOCUMENTS);
+        $chosen = array_merge($bases, $selectedChanges);
+        $room = self::MAX_DOCUMENTS - count($chosen);
+        if ($room > 0) {
+            $chosen = array_merge($chosen, array_slice($confirmations, 0, $bases === [] ? $room : min(1, $room)));
         }
 
         usort($chosen, function (array $a, array $b): int {
@@ -257,6 +328,47 @@ class shareholderAnalysis
         });
 
         return $chosen;
+    }
+
+    /**
+     * A short confirmation statement confirms the filing period and often omits the member list.
+     * Keep the annual return, incorporation form and share-capital forms instead.
+     *
+     * @param list<array{type:string,date:string,text:string,pdf:string,images:list<string>}> $documents
+     * @return list<array{type:string,date:string,text:string,pdf:string,images:list<string>}>
+     */
+    private function usefulDocuments(array $documents): array
+    {
+        $kept = [];
+        foreach ($documents as $document) {
+            if ($document['type'] === 'CS01') {
+                $text = strtolower($document['text']);
+                $mentionsShares = str_contains($text, 'shareholder')
+                    || str_contains($text, 'statement of capital')
+                    || str_contains($text, 'full details of shareholders');
+                if (!$mentionsShares && strlen($document['text']) < 2500 && strlen($document['pdf']) < 150000) {
+                    continue;
+                }
+            }
+            $kept[] = $document;
+        }
+
+        return $kept !== [] ? $kept : $documents;
+    }
+
+    /**
+     * @param list<array{type:string,date:string,text:string,pdf:string,images:list<string>}> $documents
+     */
+    private function issuedFromDocuments(array $documents): ?float
+    {
+        $issued = null;
+        foreach ($documents as $document) {
+            if (preg_match('/Total number of shares:\s*([0-9][0-9,]*)/i', $document['text'], $match) === 1) {
+                $issued = $this->normaliseIssued((float) str_replace(',', '', $match[1]));
+            }
+        }
+
+        return $issued;
     }
 
     /**
@@ -295,17 +407,21 @@ class shareholderAnalysis
 
     /**
      * @param list<array{type:string,date:string,text:string,pdf:string,images:list<string>}> $documents
-     * @return array{found:bool,holders:list<array<string,mixed>>}|null
+     * @return array{found:bool,shares_issued:?float,holders:list<array<string,mixed>>}|null
      */
     private function askOpenAi(array $documents, bool $sendPdf): ?array
     {
         $content = [[
             'type' => 'text',
             'text' => 'These UK Companies House filings are in date order, oldest first. '
-                . 'IN01, CS01, AR01, 363 and 363a are snapshots of the members. '
-                . 'SH01, SH02, SH03, SH04, SH05, SH06, SH07, SH09 and SH19 change the share capital after that snapshot. '
-                . 'List the shareholders after the latest document. Use null when a number is not printed. '
-                . 'Do not invent a holder. If the documents do not list the holders, set found to false and return no holders.',
+                . 'Determine the share ownership from the documents. '
+                . 'Use the statement of capital for the number of shares issued, and the list of shareholders or members for each owner’s name and the number of shares they hold. '
+                . 'Ignore any people with significant control section. If that section is the only list of names, and no shareholdings are printed, set found to false and return no holders. '
+                . 'IN01 and NEWINC are incorporation forms and list the first shareholders. AR01, 363 and 363a list the members at that date. Use the latest full list, then apply later SH01, SH02, SH03, SH04, SH05, SH06, SH07, SH09 and SH19 changes only when the later form names the person who received, transferred or gave up the shares. '
+                . 'If a later allotment or transfer does not name that person, set found to false and do not assume the earlier holders own the new shares. '
+                . 'A confirmation statement that does not reprint the member list does not remove the earlier list. If a later document reprints the full member list, use that list. '
+                . 'Set found to true only when the documents name the current holders and the number of shares each one owns, or a printed percentage. '
+                . 'Set shares_issued from the latest statement of capital even when found is false. Set percentage only when a percentage is printed. Use null when a number is not printed. Do not invent a holder or a number.',
         ]];
         $included = 0;
         foreach ($documents as $document) {
@@ -325,8 +441,8 @@ class shareholderAnalysis
             }
 
             $text = trim($document['text']);
-            if (strlen($text) > 12000) {
-                $text = substr($text, 0, 12000);
+            if (strlen($text) > 24000) {
+                $text = substr($text, 0, 24000);
             }
             if ($text !== '') {
                 $content[] = ['type' => 'text', 'text' => $label . "\n\n" . $text];
@@ -351,9 +467,10 @@ class shareholderAnalysis
         $schema = [
             'type' => 'object',
             'additionalProperties' => false,
-            'required' => ['found', 'holders'],
+            'required' => ['found', 'shares_issued', 'holders'],
             'properties' => [
                 'found' => ['type' => 'boolean'],
+                'shares_issued' => ['type' => ['number', 'null']],
                 'holders' => [
                     'type' => 'array',
                     'items' => [
@@ -374,7 +491,7 @@ class shareholderAnalysis
         $parsed = $this->api->openAiJson([
             [
                 'role' => 'system',
-                'content' => 'You extract the current shareholders from UK company filings. Return only holders named in the documents.',
+                'content' => 'You extract share ownership from UK company filings. Return only holders and share counts printed in the documents. Do not use the people with significant control section as the shareholder list.',
             ],
             ['role' => 'user', 'content' => $content],
         ], $schema, 'shareholders', 2000);
@@ -383,7 +500,13 @@ class shareholderAnalysis
             return null;
         }
 
-        return ['found' => $parsed['found'], 'holders' => $parsed['holders']];
+        $issued = $parsed['shares_issued'] ?? null;
+
+        return [
+            'found' => $parsed['found'],
+            'shares_issued' => is_numeric($issued) ? (float) $issued : null,
+            'holders' => $parsed['holders'],
+        ];
     }
 
     /**
@@ -416,39 +539,93 @@ class shareholderAnalysis
             if (!is_array($item) || !empty($item['ceased_on'])) {
                 continue;
             }
-            $name = trim((string) ($item['name'] ?? ''));
-            if ($name === '' && isset($item['name_elements']) && is_array($item['name_elements'])) {
-                $name = trim(implode(' ', array_filter([
-                    (string) ($item['name_elements']['forename'] ?? ''),
-                    (string) ($item['name_elements']['surname'] ?? ''),
-                ], static function (string $part): bool {
-                    return $part !== '';
-                })));
+            $holder = $this->pscHolder($companyNumber, $item);
+            if ($holder === null) {
+                continue;
             }
-            if ($name === '') {
-                $name = 'Protected person';
-            }
-            $notes = [];
-            foreach (($item['natures_of_control'] ?? []) as $nature) {
-                if (is_string($nature) && $nature !== '') {
-                    $notes[] = $this->natureLabel($nature);
-                }
-            }
-            $holders[] = [
-                'name' => $name,
-                'share_class' => '',
-                'shares' => null,
-                'percentage' => null,
-                'note' => implode('; ', array_slice($notes, 0, 3)),
-                'source_type' => 'PSC',
-                'source_date' => $this->dateOrEmpty($item['notified_on'] ?? ''),
-            ];
+            $holders[] = $holder;
             if (count($holders) >= 40) {
                 break;
             }
         }
 
         return $holders;
+    }
+
+    /**
+     * Corporate owners are read from the corporate-entity or
+     * corporate-entity-beneficial-owner record linked on the list.
+     *
+     * @param array<string, mixed> $item
+     * @return array<string, mixed>|null
+     */
+    private function pscHolder(string $companyNumber, array $item): ?array
+    {
+        $self = '';
+        if (isset($item['links']) && is_array($item['links'])) {
+            $self = (string) ($item['links']['self'] ?? '');
+        }
+        $kind = (string) ($item['kind'] ?? '');
+        if (str_contains($kind, 'corporate-entity') || str_contains($self, '/corporate-entity')) {
+            $item = $this->corporatePscRecord($companyNumber, $item, $self);
+            if (!empty($item['ceased_on'])) {
+                return null;
+            }
+        }
+
+        $name = trim((string) ($item['name'] ?? ''));
+        if ($name === '' && isset($item['name_elements']) && is_array($item['name_elements'])) {
+            $name = trim(implode(' ', array_filter([
+                (string) ($item['name_elements']['forename'] ?? ''),
+                (string) ($item['name_elements']['surname'] ?? ''),
+            ], static function (string $part): bool {
+                return $part !== '';
+            })));
+        }
+        if ($name === '') {
+            $name = 'Protected person';
+        }
+
+        $notes = [];
+        foreach (($item['natures_of_control'] ?? []) as $nature) {
+            if (is_string($nature) && $nature !== '') {
+                $notes[] = $this->natureLabel($nature);
+            }
+        }
+
+        return [
+            'name' => $name,
+            'share_class' => '',
+            'shares' => null,
+            'percentage' => null,
+            'note' => implode('; ', array_slice($notes, 0, 3)),
+            'source_type' => 'PSC',
+            'source_date' => $this->dateOrEmpty($item['notified_on'] ?? ''),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @return array<string, mixed>
+     */
+    private function corporatePscRecord(string $companyNumber, array $item, string $self): array
+    {
+        if (!preg_match(
+            '#^/company/([A-Za-z0-9]{1,12})/persons-with-significant-control/(corporate-entity-beneficial-owner|corporate-entity)/([A-Za-z0-9_-]{1,100})$#',
+            $self,
+            $match
+        ) || strcasecmp($match[1], $companyNumber) !== 0) {
+            return $item;
+        }
+
+        $raw = $this->api->getCorporateEntityPsc(
+            $companyNumber,
+            $match[3],
+            $match[2] === 'corporate-entity-beneficial-owner'
+        );
+        $detail = is_string($raw) ? json_decode($raw, true) : null;
+
+        return is_array($detail) && trim((string) ($detail['name'] ?? '')) !== '' ? $detail : $item;
     }
 
     /** @var string|null */
@@ -489,6 +666,99 @@ class shareholderAnalysis
     }
 
     /**
+     * @param mixed $value
+     */
+    private function normaliseIssued($value): ?float
+    {
+        if (!is_numeric($value)) {
+            return null;
+        }
+        $issued = (float) $value;
+        if ($issued <= 0 || $issued >= 1e16) {
+            return null;
+        }
+
+        return $issued;
+    }
+
+    /**
+     * Fill a missing total from the holdings, and fill a missing holding or percentage from the other.
+     *
+     * @param list<array<string, mixed>> $holders
+     */
+    private function completeOwnership(array &$holders, ?float &$issued): void
+    {
+        $sum = 0.0;
+        $allKnown = $holders !== [];
+        foreach ($holders as $holder) {
+            if (is_numeric($holder['shares'])) {
+                $sum += (float) $holder['shares'];
+            } else {
+                $allKnown = false;
+            }
+        }
+        if ($issued === null && $allKnown && $sum > 0) {
+            $issued = $sum;
+        }
+
+        foreach ($holders as &$holder) {
+            if (!is_numeric($holder['shares']) && is_numeric($holder['percentage']) && $issued !== null && $issued > 0) {
+                $shares = $issued * ((float) $holder['percentage'] / 100);
+                if ($shares >= 0 && $shares < 1e16) {
+                    $holder['shares'] = $shares;
+                }
+            }
+            if (!is_numeric($holder['percentage']) && is_numeric($holder['shares']) && $issued !== null && $issued > 0) {
+                $percentage = ((float) $holder['shares'] / $issued) * 100;
+                if ($percentage >= 0 && $percentage <= 100.05) {
+                    $holder['percentage'] = min(100, round($percentage, 2));
+                }
+            } elseif (is_numeric($holder['percentage'])) {
+                $holder['percentage'] = min(100, max(0, round((float) $holder['percentage'], 2)));
+            }
+        }
+        unset($holder);
+    }
+
+    /**
+     * @param list<array<string, mixed>> $holders
+     */
+    private function ownershipDetermined(array $holders): bool
+    {
+        foreach ($holders as $holder) {
+            if (is_numeric($holder['shares']) || is_numeric($holder['percentage'])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * A named list that accounts for only some of the shares issued is not the current ownership.
+     *
+     * @param list<array<string, mixed>> $holders
+     */
+    private function holdingsCoverIssued(array $holders, ?float $issued): bool
+    {
+        if ($issued === null || $issued <= 0) {
+            return true;
+        }
+
+        $sum = 0.0;
+        $any = false;
+        foreach ($holders as $holder) {
+            if (!is_numeric($holder['shares'])) {
+                continue;
+            }
+            $sum += (float) $holder['shares'];
+            $any = true;
+        }
+
+        return $any && $sum >= $issued * 0.98 && $sum <= $issued * 1.02;
+    }
+
+    /**
      * @param list<array<string, mixed>> $filings
      * @return array{type:string,date:string}
      */
@@ -515,17 +785,17 @@ class shareholderAnalysis
         }
         sort($parts);
 
-        return hash('sha256', implode("\n", $parts));
+        return hash('sha256', self::READING_VERSION . "\n" . implode("\n", $parts));
     }
 
     /**
-     * @return array{summary:string,cached:bool,source:string,holders:list<array<string,string>>}|null
+     * @return array{summary:string,cached:bool,source:string,shares_issued:string,holders:list<array<string,string>>}|null
      */
     private function storedResult(string $companyNumber, string $marker): ?array
     {
         try {
             $snapshot = $this->app->query(
-                'SELECT source, summary, processed_at FROM shareholder_snapshots
+                'SELECT source, summary, shares_issued, processed_at FROM shareholder_snapshots
                  WHERE company_number = :cn AND filing_marker = :marker LIMIT 1',
                 [':cn' => $companyNumber, ':marker' => $marker]
             )->fetch(PDO::FETCH_ASSOC);
@@ -569,26 +839,33 @@ class shareholderAnalysis
             . ($processed !== '' ? ' on ' . $this->formatDate($processed) : '')
             . '. ' . (string) $snapshot['summary'];
 
-        return $this->present((string) $snapshot['source'], $summary, $holders, true);
+        return $this->present(
+            (string) $snapshot['source'],
+            $summary,
+            $holders,
+            true,
+            $this->normaliseIssued($snapshot['shares_issued'] ?? null)
+        );
     }
 
     /**
      * @param list<array<string, mixed>> $holders
      */
-    private function save(string $companyNumber, string $marker, string $source, string $summary, array $holders): void
+    private function save(string $companyNumber, string $marker, string $source, string $summary, array $holders, ?float $issued): void
     {
         $this->app->db->beginTransaction();
         try {
             $this->app->db->prepare(
-                'INSERT INTO shareholder_snapshots (company_number, filing_marker, source, summary, processed_at)
-                 VALUES (:cn, :marker, :source, :summary, NOW())
+                'INSERT INTO shareholder_snapshots (company_number, filing_marker, source, summary, shares_issued, processed_at)
+                 VALUES (:cn, :marker, :source, :summary, :issued, NOW())
                  ON DUPLICATE KEY UPDATE filing_marker = VALUES(filing_marker), source = VALUES(source),
-                    summary = VALUES(summary), processed_at = NOW()'
+                    summary = VALUES(summary), shares_issued = VALUES(shares_issued), processed_at = NOW()'
             )->execute([
                 ':cn' => $companyNumber,
                 ':marker' => $marker,
                 ':source' => $source,
                 ':summary' => substr($summary, 0, 500),
+                ':issued' => $issued,
             ]);
 
             $this->app->db->prepare('DELETE FROM shareholders WHERE company_number = ?')->execute([$companyNumber]);
@@ -620,9 +897,9 @@ class shareholderAnalysis
 
     /**
      * @param list<array<string, mixed>> $holders
-     * @return array{summary:string,cached:bool,source:string,holders:list<array<string,string>>}
+     * @return array{summary:string,cached:bool,source:string,shares_issued:string,holders:list<array<string,string>>}
      */
-    private function present(string $source, string $summary, array $holders, bool $cached): array
+    private function present(string $source, string $summary, array $holders, bool $cached, ?float $issued): array
     {
         $rows = [];
         foreach ($holders as $holder) {
@@ -632,7 +909,9 @@ class shareholderAnalysis
                 'name' => (string) $holder['name'],
                 'share_class' => (string) ($holder['share_class'] ?? ''),
                 'shares' => is_numeric($shares) ? $this->formatNumber((float) $shares) : '',
-                'percentage' => is_numeric($percentage) ? rtrim(rtrim(number_format((float) $percentage, 2, '.', ''), '0'), '.') . '%' : '',
+                'percentage' => is_numeric($percentage)
+                    ? rtrim(rtrim(number_format((float) $percentage, 2, '.', ''), '0'), '.') . '%'
+                    : $this->shareBand((string) ($holder['note'] ?? '')),
                 'note' => (string) ($holder['note'] ?? ''),
                 'source' => (string) ($holder['source_type'] ?? ''),
                 'date' => $this->formatDate($this->dateOrEmpty($holder['source_date'] ?? '')),
@@ -643,8 +922,21 @@ class shareholderAnalysis
             'summary' => $summary,
             'cached' => $cached,
             'source' => $source,
+            'shares_issued' => $issued !== null ? $this->formatNumber($issued) : '',
             'holders' => $rows,
         ];
+    }
+
+    private function shareBand(string $note): string
+    {
+        foreach (explode('; ', $note) as $part) {
+            $part = trim($part);
+            if ($part !== '' && stripos($part, 'share') !== false) {
+                return $part;
+            }
+        }
+
+        return '';
     }
 
     private function natureLabel(string $nature): string
@@ -765,7 +1057,7 @@ class shareholderAnalysis
         $text = preg_replace("/[ \t]+/", ' ', $text) ?? $text;
         $text = trim(preg_replace("/\n{3,}/", "\n\n", $text) ?? $text);
 
-        return strlen($text) > 12000 ? substr($text, 0, 12000) : $text;
+        return strlen($text) > 24000 ? substr($text, 0, 24000) : $text;
     }
 
     private function textFromPdf(string $pdf): string
@@ -781,7 +1073,7 @@ class shareholderAnalysis
         try {
             $path = $dir . '/filing.pdf';
             file_put_contents($path, $pdf);
-            $text = $this->commandOutput([$pdftotext, '-layout', '-f', '1', '-l', '8', $path, '-']) ?? '';
+            $text = $this->commandOutput([$pdftotext, '-layout', '-f', '1', '-l', '15', $path, '-']) ?? '';
         } finally {
             $this->removeDir($dir);
         }

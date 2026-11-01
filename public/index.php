@@ -33,6 +33,10 @@ $pageDescription = '';
 $canonical       = null;
 
 include_once $propFile;
+
+if (!headers_sent()) {
+    header('Cache-Control: no-cache');
+}
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -68,8 +72,8 @@ include_once $propFile;
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="/assets/css/fontawesome.css">
-    <link rel="stylesheet" href="/assets/css/dataindex.css">
+    <link rel="stylesheet" href="<?php echo eAttr(assetUrl('assets/css/fontawesome.css')); ?>">
+    <link rel="stylesheet" href="<?php echo eAttr(assetUrl('assets/css/dataindex.css')); ?>">
 
     <?php if (GA_MEASUREMENT_ID !== ''): ?>
         <script async src="https://www.googletagmanager.com/gtag/js?id=<?php echo eAttr(GA_MEASUREMENT_ID); ?>"></script>
@@ -120,6 +124,6 @@ include_once $propFile;
 
 <?php include_once INCLUDE_PATH . '/footer.inc.php'; ?>
 
-<script src="/assets/js/dataindex.js" defer></script>
+<script src="<?php echo eAttr(assetUrl('assets/js/dataindex.js')); ?>" defer></script>
 </body>
 </html>

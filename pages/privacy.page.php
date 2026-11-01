@@ -8,7 +8,7 @@
 <section class="section">
     <div class="container">
         <article class="legal">
-            <p class="text-muted">Last updated: 31 October 2026</p>
+            <p class="text-muted">Last updated: 1 November 2026</p>
 
             <p>This notice explains how Data Index, the operator of dataindex.online (the “site”), uses personal data. It is written for people in the United Kingdom and reflects the UK General Data Protection Regulation (UK GDPR) and the Data Protection Act 2018. Cookies are also covered by the Privacy and Electronic Communications Regulations (PECR).</p>
 
@@ -22,11 +22,11 @@
             <h2>Information published from public registers</h2>
             <p>Most of what the site shows is information about companies and places, taken from public sources:</p>
             <ul>
-                <li><strong>Companies House:</strong> company name, number, status, type, registered office, industry codes, accounts dates and filing history. Filing history is requested from the Companies House API when a company page is opened. We show the document type, date and description returned by that API. When you choose Run Financial Analysis, we use that filing history, together with filing history already stored for the company, to select up to three annual accounts. We then request those documents from Companies House and show figures taken from them. We do not keep a copy of the accounts documents. When you choose Find shareholders, we use incorporation, confirmation statement, annual return and share-capital filings to read the current holders. If those documents do not name them, we request the people with significant control from Companies House. We store the resulting names and shareholdings, and replace them when a newer filing of that kind appears. We do not keep a copy of those documents.</li>
+                <li><strong>Companies House:</strong> company name, number, status, type, registered office, industry codes, accounts dates and filing history. Filing history is requested from the Companies House API when a company page is opened. We show the document type, date and description returned by that API. When you choose Run Financial Analysis, we use that filing history, together with filing history already stored for the company, to select up to three annual accounts. We then request those documents from Companies House and show figures taken from them. We do not keep a copy of the accounts documents. When you choose Find shareholders, we use incorporation, confirmation statement, annual return and share-capital filings to read how many shares are issued and who holds them. If those documents do not show the ownership, we request the people with significant control from Companies House. We store the number of shares issued and the resulting names and shareholdings, and replace them when a newer filing of that kind appears. We do not keep a copy of those documents.</li>
                 <li><strong>HMRC:</strong> the business name, VAT number and address returned when someone searches for or validates a GB VAT number. We may keep that result so a later lookup can be answered, and we refresh it when HMRC returns a newer result.</li>
-                <li><strong>Postcode data:</strong> location details for a postcode, together with companies and VAT-registered businesses linked to that postcode.</li>
+                <li><strong>Postcode data:</strong> location details for a postcode, together with companies and VAT-registered businesses linked to that postcode. A postcode page also shows residential sales from HM Land Registry Price Paid Data: the price, date, address and property type.</li>
             </ul>
-            <p>Information about a limited company is usually not personal data. It can be personal data where it identifies a living person, for example a sole trader’s name on a VAT record, or a home address that Companies House or HMRC publishes as a business address. Where that applies, we use the information to run this public index. The source is the relevant public body, or our stored copy of an earlier lookup. You can ask Companies House or HMRC to correct their register. You can also email us and ask us to review the copy we hold.</p>
+            <p>Information about a limited company is usually not personal data. It can be personal data where it identifies a living person, for example a sole trader’s name on a VAT record, or a home address that Companies House, HMRC or HM Land Registry publishes. Where that applies, we use the information to run this public index. The source is the relevant public body, or our stored copy of an earlier lookup. You can ask Companies House, HMRC or HM Land Registry to correct their records. You can also email us and ask us to review the copy we hold.</p>
 
             <h2>Information we collect when you use the site</h2>
             <ul>
@@ -96,7 +96,7 @@
                 <li><strong>Company and postcode records:</strong> while the record remains part of the index.</li>
                 <li><strong>Filing history:</strong> shown from the live Companies House response for that visit. A stored copy of earlier filing history may be used to choose annual accounts when you run a financial analysis.</li>
                 <li><strong>Accounts documents:</strong> requested when you run a financial analysis, read to produce the figures on screen, and not stored afterwards. The resulting summary may be kept temporarily so a repeat request for the same filings can be answered without downloading the documents again.</li>
-                <li><strong>Shareholders:</strong> names, share classes and holdings read from the filings, or the people with significant control when the filings do not list holders. Kept until a newer relevant filing is processed, then replaced. The documents are not stored.</li>
+                <li><strong>Shareholders:</strong> the number of shares issued, and the names, share classes and holdings read from the filings. When the filings do not show the ownership, the people with significant control are stored instead. Kept until a newer relevant filing is processed, then replaced. The documents are not stored.</li>
                 <li><strong>Session cookie:</strong> for the browser session.</li>
                 <li><strong>Visitor check:</strong> stored only in a cookie on your device for 24 hours. We do not keep a separate record of the check.</li>
             </ul>

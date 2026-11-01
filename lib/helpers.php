@@ -37,6 +37,30 @@ if (!function_exists('eAttr')) {
     }
 }
 
+if (!function_exists('assetUrl')) {
+    /**
+     * URL for a file in public/. The file time is added so a browser that
+     * saved an older copy fetches the file again after it changes.
+     */
+    function assetUrl(string $path): string
+    {
+        $path = ltrim($path, '/');
+        $url = '/' . $path;
+        if (!defined('PUBLIC_PATH')) {
+            return $url;
+        }
+
+        $file = PUBLIC_PATH . '/' . $path;
+        if (!is_file($file)) {
+            return $url;
+        }
+
+        $mtime = filemtime($file);
+
+        return $mtime === false ? $url : $url . '?v=' . $mtime;
+    }
+}
+
 if (!function_exists('eUrl')) {
     /**
      * Escape a value for use as part of a URL path/segment.

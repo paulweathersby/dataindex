@@ -10,9 +10,13 @@ CREATE TABLE IF NOT EXISTS shareholder_snapshots (
     filing_marker CHAR(64) NOT NULL,
     source VARCHAR(16) NOT NULL,
     summary VARCHAR(500) NOT NULL,
+    shares_issued DECIMAL(20, 4) NULL,
     processed_at DATETIME NOT NULL,
     PRIMARY KEY (company_number)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Existing databases created before shares_issued:
+-- ALTER TABLE shareholder_snapshots ADD COLUMN shares_issued DECIMAL(20, 4) NULL AFTER summary;
 
 CREATE TABLE IF NOT EXISTS shareholders (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

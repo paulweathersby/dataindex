@@ -372,6 +372,16 @@ hr { border: 0; border-top: 1px solid var(--c-border); margin: 2rem 0; }
 }
 .search__results li:hover,
 .search__results li[aria-selected="true"] { background: var(--c-brand-soft); color: var(--c-brand-strong); }
+.search__result-meta {
+    display: block;
+    margin-top: .15rem;
+    font-weight: 400;
+    font-size: .85rem;
+    color: var(--c-muted);
+}
+.search__results li:hover .search__result-meta,
+.search__results li[aria-selected="true"] .search__result-meta { color: var(--c-brand-strong); }
+.search--left { margin-left: 0; margin-bottom: 2.5rem; }
 
 .search__hint {
     margin-top: 1rem;
@@ -545,6 +555,13 @@ hr { border: 0; border-top: 1px solid var(--c-border); margin: 2rem 0; }
 }
 .data-table tbody tr:last-child td { border-bottom: 0; }
 .data-table tbody tr:hover { background: var(--c-surface-alt); }
+.data-table td.num,
+.data-table th.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.price-paid td:first-child { white-space: nowrap; }
 
 .table-scroll { overflow-x: auto; }
 

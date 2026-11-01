@@ -26,8 +26,22 @@ $vat_query = $app->query(
     [':pcode' => $pcode]
 );
 
+$price_query = $app->query(
+    'SELECT price, date_of_transfer, property_type, old_new, duration,
+            paon, saon, street, locality, town_city, district, county,
+            ppd_category_type
+     FROM hmlr_price_paid
+     WHERE postcode = :pcode
+       AND record_status <> :deleted
+     ORDER BY date_of_transfer DESC, price DESC',
+    [
+        ':pcode'   => $pcode,
+        ':deleted' => 'D',
+    ]
+);
+
 $pageTitle = 'Information about ' . ($pcode_data['postcode'] ?? $pcode) . ' ' . ($pcode_data['ward'] ?? '');
 $canonical = SITE_URL . 'postalcode/postcode/' . rawurlencode($pcode_string);
 $pageDescription = 'Information about ' . ($pcode_data['postcode'] ?? $pcode)
     . ' ' . ($pcode_data['ward'] ?? '')
-    . ' including postcode data, registered companies and VAT registered businesses.';
+    . ' including postcode data, property sales, registered companies and VAT registered businesses.';
