@@ -2,6 +2,8 @@ RewriteEngine on
 
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule .* index.php?path=$0
+# B escapes spaces and control characters. Apache 2.4.60 and later
+# reject a rewritten query string that still contains them (AH10411).
+RewriteRule .* index.php?path=$0 [B,L]
 
 
