@@ -27,11 +27,12 @@ class shareholderAnalysis
     private const INCORPORATION_TYPES = ['IN01', 'NEWINC'];
     /** Annual returns that list the members at that date. */
     private const RETURN_TYPES = ['AR01', '363', '363A'];
-    /** Bump when the reading changes, so a saved PSC result is read again from the filings. */
-    private const READING_VERSION = '4';
-    /** Filing-history pages are walked until this many items have been reviewed. */
-    private const MAX_FILINGS_REVIEWED = 50;
-    private const FILING_PAGE_SIZE = 25;
+    /** Bump when the reading changes, so a saved result is read again from the filings. */
+    private const READING_VERSION = '5';
+    /** One filing-history page. 100 is the list operation's maximum. */
+    private const FILING_PAGE_SIZE = 100;
+    /** A guard so a broken total_count cannot keep requesting pages. */
+    private const MAX_FILINGS_REVIEWED = 1000;
 
     /** @var list<string> */
     private const FILING_CATEGORIES = ['confirmation-statement', 'annual-return', 'capital', 'incorporation'];
@@ -78,8 +79,7 @@ class shareholderAnalysis
             }
         }
 
-        $chosen = $this->chooseFilings($filings);
-        $documents = $this->usefulDocuments($this->readDocuments($companyNumber, $chosen));
+        [$chosen, $documents] = $this->readShareFilings($companyNumber, $filings);
         $readable = 0;
         foreach ($documents as $document) {
             if ($document['text'] !== '' || $document['pdf'] !== '' || $document['images'] !== []) {
@@ -168,13 +168,15 @@ class shareholderAnalysis
     }
 
     /**
-     * Walk the filing-history list, 25 items at a time, and stop after 50.
+     * Walk every page of the share-filing list. The list is newest first, so
+     * the incorporation form and older annual returns are on the later pages.
      *
      * @return list<array<string, mixed>>
      */
     private function pagedApiFilings(string $companyNumber): array
     {
         $rows = [];
+        $seen = [];
         $start = 0;
         $reviewed = 0;
 
@@ -190,8 +192,17 @@ class shareholderAnalysis
                 break;
             }
 
+            $duplicatePage = false;
             foreach ($decoded->items as $item) {
                 $reviewed++;
+                $transactionId = is_object($item) ? (string) ($item->transaction_id ?? '') : '';
+                if ($transactionId !== '' && isset($seen[$transactionId])) {
+                    $duplicatePage = true;
+                    break;
+                }
+                if ($transactionId !== '') {
+                    $seen[$transactionId] = true;
+                }
                 $row = $this->filingFromApi($item);
                 if ($row !== null) {
                     $rows[$this->filingKey($row)] = $row;
@@ -199,6 +210,9 @@ class shareholderAnalysis
                 if ($reviewed >= self::MAX_FILINGS_REVIEWED) {
                     break;
                 }
+            }
+            if ($duplicatePage) {
+                break;
             }
 
             $received = count($decoded->items);
@@ -224,8 +238,7 @@ class shareholderAnalysis
                 'SELECT date, type, description, link_self, link_metadata, transaction_id
                  FROM filings
                  WHERE company_number = ? AND UPPER(type) IN (' . $placeholders . ')
-                 ORDER BY date DESC
-                 LIMIT 50'
+                 ORDER BY date DESC'
             );
             $stmt->execute(array_merge([$companyNumber], $types));
         } catch (Throwable $exception) {
@@ -282,64 +295,87 @@ class shareholderAnalysis
     }
 
     /**
+     * The current list is the newest document that restates the members.
+     * A confirmation statement "with updates" does that. A later confirmation
+     * statement "with no updates" does not, and must not take its place.
+     * Share transfers filed after that list are applied on top. If the newest
+     * restatement has no member list, the previous one is read instead.
+     *
      * @param list<array<string, mixed>> $filings
-     * @return list<array<string, mixed>>
+     * @return array{0:list<array<string, mixed>>,1:list<array{type:string,date:string,text:string,pdf:string,images:list<string>}>}
      */
-    private function chooseFilings(array $filings): array
+    private function readShareFilings(string $companyNumber, array $filings): array
     {
-        $member = null;
-        $incorporation = null;
+        $snapshots = [];
         $changes = [];
-        $confirmations = [];
         foreach ($filings as $filing) {
-            if (in_array($filing['type'], self::RETURN_TYPES, true)) {
-                if ($member === null) {
-                    $member = $filing;
-                }
-            } elseif (in_array($filing['type'], self::INCORPORATION_TYPES, true)) {
-                if ($incorporation === null) {
-                    $incorporation = $filing;
-                }
+            if ($this->isMemberSnapshot($filing)) {
+                $snapshots[] = $filing;
             } elseif (in_array($filing['type'], self::CHANGE_TYPES, true)) {
                 $changes[] = $filing;
-            } elseif ($filing['type'] === 'CS01') {
-                $confirmations[] = $filing;
             }
         }
 
-        $bases = [];
-        if ($incorporation !== null) {
-            $bases[] = $incorporation;
-        }
-        if ($member !== null) {
-            $bases[] = $member;
-        }
-
-        $oldest = '';
-        foreach ($bases as $base) {
-            $date = (string) $base['date'];
-            if ($oldest === '' || ($date !== '' && strcmp($date, $oldest) < 0)) {
-                $oldest = $date;
+        $chosen = [];
+        $documents = [];
+        $attempts = 0;
+        foreach ($snapshots as $snapshot) {
+            if ($attempts >= 2) {
+                break;
             }
-        }
-
-        $selectedChanges = [];
-        foreach ($changes as $filing) {
-            if ($oldest !== '' && strcmp((string) $filing['date'], $oldest) < 0) {
-                continue;
-            }
-            $selectedChanges[] = $filing;
-            if (count($selectedChanges) >= 3) {
+            $attempts++;
+            $candidate = $this->candidateFilings($snapshot, $changes);
+            $read = $this->readDocuments($companyNumber, $candidate);
+            $chosen = $candidate;
+            $documents = $this->usefulDocuments($read);
+            if ($this->snapshotListsMembers($snapshot, $read)) {
                 break;
             }
         }
 
-        $chosen = array_merge($bases, $selectedChanges);
-        $room = self::MAX_DOCUMENTS - count($chosen);
-        if ($room > 0) {
-            $chosen = array_merge($chosen, array_slice($confirmations, 0, $bases === [] ? $room : min(1, $room)));
+        return [$chosen, $documents];
+    }
+
+    /**
+     * @param array<string, mixed> $filing
+     */
+    private function isMemberSnapshot(array $filing): bool
+    {
+        if (in_array($filing['type'], self::RETURN_TYPES, true) || in_array($filing['type'], self::INCORPORATION_TYPES, true)) {
+            return true;
         }
 
+        return $filing['type'] === 'CS01' && $this->confirmationRestatesShareholders($filing);
+    }
+
+    /**
+     * Companies House labels a confirmation statement that delivers a new
+     * shareholder list as "with updates". "with no updates" only confirms the
+     * previous list and does not reprint it.
+     *
+     * @param array<string, mixed> $filing
+     */
+    private function confirmationRestatesShareholders(array $filing): bool
+    {
+        $description = strtolower(trim((string) ($filing['description'] ?? '')));
+        if ($description === '') {
+            return false;
+        }
+        if (preg_match('/\bwith[-\s]+no[-\s]+updates\b/', $description) === 1) {
+            return false;
+        }
+
+        return preg_match('/\bwith[-\s]+updates\b/', $description) === 1;
+    }
+
+    /**
+     * @param array<string, mixed> $snapshot
+     * @param list<array<string, mixed>> $changes
+     * @return list<array<string, mixed>>
+     */
+    private function candidateFilings(array $snapshot, array $changes): array
+    {
+        $chosen = array_merge([$snapshot], $this->changesAfter($changes, $snapshot));
         usort($chosen, function (array $a, array $b): int {
             return strcmp((string) $a['date'], (string) $b['date']);
         });
@@ -348,8 +384,70 @@ class shareholderAnalysis
     }
 
     /**
-     * A short confirmation statement confirms the filing period and often omits the member list.
-     * Keep the annual return, incorporation form and share-capital forms instead.
+     * Share-capital forms already reflected in the member list are skipped.
+     * A form filed on the same day as a confirmation statement is part of that
+     * statement. A form filed after an annual return or incorporation is not.
+     *
+     * @param list<array<string, mixed>> $changes
+     * @param array<string, mixed> $snapshot
+     * @return list<array<string, mixed>>
+     */
+    private function changesAfter(array $changes, array $snapshot): array
+    {
+        $date = (string) ($snapshot['date'] ?? '');
+        $selected = [];
+        foreach ($changes as $filing) {
+            $changeDate = (string) $filing['date'];
+            if ($date !== '' && strcmp($changeDate, $date) < 0) {
+                continue;
+            }
+            if (($snapshot['type'] ?? '') === 'CS01' && $date !== '' && strcmp($changeDate, $date) <= 0) {
+                continue;
+            }
+            $selected[] = $filing;
+            if (count($selected) >= min(3, self::MAX_DOCUMENTS - 1)) {
+                break;
+            }
+        }
+
+        return $selected;
+    }
+
+    /**
+     * @param array<string, mixed> $snapshot
+     * @param list<array{type:string,date:string,text:string,pdf:string,images:list<string>}> $documents
+     */
+    private function snapshotListsMembers(array $snapshot, array $documents): bool
+    {
+        $matched = null;
+        foreach ($documents as $document) {
+            if ((string) $document['type'] === (string) $snapshot['type']
+                && (string) $document['date'] === (string) $snapshot['date']) {
+                $matched = $document;
+                break;
+            }
+        }
+        if ($matched === null) {
+            return false;
+        }
+        if ($snapshot['type'] !== 'CS01') {
+            return $matched['text'] !== '' || $matched['pdf'] !== '';
+        }
+
+        $text = strtolower($matched['text']);
+        if (str_contains($text, 'shareholder')
+            || str_contains($text, 'statement of capital')
+            || str_contains($text, 'full details of shareholders')) {
+            return true;
+        }
+
+        return trim($matched['text']) === '' && $matched['pdf'] !== '';
+    }
+
+    /**
+     * A confirmation statement whose text is present and never mentions the
+     * members is a filing-period confirmation. Keep a PDF whose text could not
+     * be extracted, because the member list may be on the page image.
      *
      * @param list<array{type:string,date:string,text:string,pdf:string,images:list<string>}> $documents
      * @return list<array{type:string,date:string,text:string,pdf:string,images:list<string>}>
@@ -363,7 +461,7 @@ class shareholderAnalysis
                 $mentionsShares = str_contains($text, 'shareholder')
                     || str_contains($text, 'statement of capital')
                     || str_contains($text, 'full details of shareholders');
-                if (!$mentionsShares && strlen($document['text']) < 2500 && strlen($document['pdf']) < 150000) {
+                if (trim($document['text']) !== '' && !$mentionsShares) {
                     continue;
                 }
             }
@@ -434,9 +532,10 @@ class shareholderAnalysis
                 . 'Determine the share ownership from the documents. '
                 . 'Use the statement of capital for the number of shares issued, and the list of shareholders or members for each owner’s name and the number of shares they hold. '
                 . 'Ignore any people with significant control section. If that section is the only list of names, and no shareholdings are printed, set found to false and return no holders. '
-                . 'IN01 and NEWINC are incorporation forms and list the first shareholders. AR01, 363 and 363a list the members at that date. Use the latest full list, then apply later SH01, SH02, SH03, SH04, SH05, SH06, SH07, SH09 and SH19 changes only when the later form names the person who received, transferred or gave up the shares. '
+                . 'IN01 and NEWINC are incorporation forms and list the first shareholders. AR01, 363 and 363a list the members at that date. A confirmation statement filed with updates replaces that list when it names the shareholders and the number of shares held at the confirmation statement date. Use that latest full list, then apply later SH01, SH02, SH03, SH04, SH05, SH06, SH07, SH09 and SH19 changes only when the later form names the person who received, transferred or gave up the shares. '
                 . 'If a later allotment or transfer does not name that person, set found to false and do not assume the earlier holders own the new shares. '
-                . 'A confirmation statement that does not reprint the member list does not remove the earlier list. If a later document reprints the full member list, use that list. '
+                . 'Include every person the latest list shows holding more than zero shares, including a person who received a transfer. Do not include a person shown with 0 shares held, or whose shares were transferred away, even when an older document still names them. '
+                . 'A confirmation statement that does not reprint the member list does not remove or restore an earlier list. '
                 . 'Set found to true only when the documents name the current holders and the number of shares each one owns, or a printed percentage. '
                 . 'Set shares_issued from the latest statement of capital even when found is false. Set percentage only when a percentage is printed. Use null when a number is not printed. Do not invent a holder or a number.',
         ]];
@@ -665,11 +764,16 @@ class shareholderAnalysis
             }
             $shares = $holder['shares'] ?? null;
             $percentage = $holder['percentage'] ?? null;
+            $shareCount = is_numeric($shares) && (float) $shares >= 0 && (float) $shares < 1e16 ? (float) $shares : null;
+            $percentageValue = is_numeric($percentage) && (float) $percentage >= 0 && (float) $percentage <= 100 ? (float) $percentage : null;
+            if ($shareCount === 0.0 && ($percentageValue === null || $percentageValue === 0.0)) {
+                continue;
+            }
             $clean[] = [
                 'name' => $name,
                 'share_class' => substr(trim((string) ($holder['share_class'] ?? '')), 0, 80),
-                'shares' => is_numeric($shares) && (float) $shares >= 0 && (float) $shares < 1e16 ? (float) $shares : null,
-                'percentage' => is_numeric($percentage) && (float) $percentage >= 0 && (float) $percentage <= 100 ? (float) $percentage : null,
+                'shares' => $shareCount,
+                'percentage' => $percentageValue,
                 'note' => substr(trim((string) ($holder['note'] ?? '')), 0, 160),
                 'source_type' => (string) ($source['type'] ?? 'PSC'),
                 'source_date' => (string) ($source['date'] ?? ''),
