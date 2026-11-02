@@ -22,7 +22,7 @@ class visitorCheck
 
     /**
      * A crawler Cloudflare has verified may read the stored index only.
-     * It is not allowed to trigger Companies House, HMRC, OpenAI, or Turnstile.
+     * It is not allowed to trigger Companies House, HMRC, OpenAI, data.police.uk, or Turnstile.
      */
     public static function cacheOnly(): bool
     {

@@ -450,6 +450,44 @@ class apiRequest
     }
 
     /**
+     * Street-level crimes inside a polygon, for the latest month published
+     * by data.police.uk. A point alone is fixed at one mile, so the caller
+     * passes a smaller area. Returns the raw JSON array, or null when the
+     * service cannot be used.
+     */
+    public function streetCrimes(float $latitude, float $longitude, string $polygon): ?string
+    {
+        if ($this->cacheOnly() || !is_finite($latitude) || !is_finite($longitude)) {
+            return null;
+        }
+        if ($latitude < -90 || $latitude > 90 || $longitude < -180 || $longitude > 180) {
+            return null;
+        }
+        if (preg_match('/^-?\d+\.\d+,-?\d+\.\d+(?::-?\d+\.\d+,-?\d+\.\d+){2,31}$/', $polygon) !== 1) {
+            return null;
+        }
+
+        $url = 'https://data.police.uk/api/crimes-street/all-crime?poly=' . $polygon;
+
+        try {
+            $response = $this->http()->request('GET', $url, ['timeout' => 12]);
+            $status = $response->getStatusCode();
+            $body = (string) $response->getBody();
+            if ($status === 200 && str_starts_with(ltrim($body), '[')) {
+                return $body;
+            }
+
+            error_log('apiRequest::streetCrimes: HTTP ' . $status);
+            return null;
+        } catch (LogicException $exception) {
+            return null;
+        } catch (Throwable $exception) {
+            error_log('apiRequest::streetCrimes failed: ' . $exception->getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Fetch Google News RSS for a search term. Returns the raw XML body or null.
      * The term is URL-encoded to prevent query-string injection.
      */

@@ -10,8 +10,8 @@
         <div class="section-heading">
             <span class="eyebrow">Open postcode data</span>
             <h2>Data about every UK postcode</h2>
-            <p>A data index of postcode records with the companies and property
-               data associated with each. Understand what's available at postcode level.</p>
+            <p>A data index of postcode records, with the companies, property sales
+               and street-level crime associated with each.</p>
         </div>
 
         <form data-search
@@ -37,8 +37,7 @@
             $tiles = [
                 ['fa-home',     'Property Prices',              'Paid-price data from 1995 to current for all residential property in the UK, published three months after completion.'],
                 ['fa-building', 'Companies',                    'Companies operating within each postcode. See every UK registered business at postcode level.'],
-                ['fa-gavel',    'Insolvencies',                 'Corporate insolvencies and winding-up orders collated at postcode level.'],
-                ['fa-file-text-o', 'Wills &amp; Probate',       'Will &amp; Probate records created within a postcode, with statistics.'],
+                ['fa-shield',   'Crime',                        'Street-level crime from data.police.uk for the latest published month, within a quarter of a mile. Counts by type, outcome and approximate street. In Scotland this includes British Transport Police only.'],
             ];
             foreach ($tiles as [$icon, $title, $body]): ?>
                 <article class="card card--feature">

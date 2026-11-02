@@ -123,6 +123,104 @@
             </div>
         <?php endif; ?>
 
+        <?php if (is_array($crime)): ?>
+            <h3 class="mt-4">Crime near <?php echo e($pcodeDisplay); ?></h3>
+            <?php if ($crime['status'] === 'unavailable'): ?>
+                <p>Street-level crime data is not available for this postcode right now.</p>
+            <?php elseif ($crime['status'] === 'empty'): ?>
+                <p class="text-muted">Street-level crime from <a href="https://data.police.uk/" target="_blank" rel="noopener">data.police.uk</a>, within <?php echo e($crime['radius']); ?> of this postcode. Locations are approximate.</p>
+                <?php if (!empty($crime['scotland'])): ?>
+                    <p class="text-muted">In Scotland, data.police.uk only includes British Transport Police, so these figures are not the full local picture.</p>
+                <?php endif; ?>
+                <p>No street-level crimes were reported for <?php echo e($crime['month'] !== '' ? $crime['month'] : 'the latest month'); ?>.</p>
+            <?php else: ?>
+                <p class="text-muted">
+                    Street-level crime from <a href="https://data.police.uk/" target="_blank" rel="noopener">data.police.uk</a>
+                    for <?php echo e($crime['month'] !== '' ? $crime['month'] : 'the latest month'); ?>,
+                    within <?php echo e($crime['radius']); ?> of this postcode. Locations are approximate.
+                </p>
+                <?php if (!empty($crime['scotland'])): ?>
+                    <p class="text-muted">In Scotland, data.police.uk only includes British Transport Police, so these figures are not the full local picture.</p>
+                <?php endif; ?>
+                <p><?php echo e(number_format($crime['total'])); ?> crimes were recorded.</p>
+                <div class="grid grid-2">
+                    <div>
+                        <h4 class="mt-2">By type</h4>
+                        <div class="table-scroll">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Type</th>
+                                        <th class="num">Crimes</th>
+                                        <th class="num">Share</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($crime['categories'] as $row): ?>
+                                        <tr>
+                                            <td><?php echo e($row['label']); ?></td>
+                                            <td class="num"><?php echo e(number_format($row['count'])); ?></td>
+                                            <td class="num"><?php echo e(number_format($row['count'] / $crime['total'] * 100, 1)); ?>%</td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 class="mt-2">Outcomes</h4>
+                        <div class="table-scroll">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Outcome</th>
+                                        <th class="num">Crimes</th>
+                                        <th class="num">Share</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($crime['outcomes'] as $row): ?>
+                                        <tr>
+                                            <td><?php echo e($row['label']); ?></td>
+                                            <td class="num"><?php echo e(number_format($row['count'])); ?></td>
+                                            <td class="num"><?php echo e(number_format($row['count'] / $crime['total'] * 100, 1)); ?>%</td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <?php if ($crime['streets'] !== []): ?>
+                    <h4 class="mt-3">Where they were recorded</h4>
+                    <?php if ($crime['street_count'] > count($crime['streets'])): ?>
+                        <p class="text-muted">
+                            The <?php echo e((string) count($crime['streets'])); ?> approximate locations with the most crimes,
+                            of <?php echo e(number_format($crime['street_count'])); ?> in total.
+                        </p>
+                    <?php endif; ?>
+                    <div class="table-scroll">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Location</th>
+                                    <th class="num">Crimes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($crime['streets'] as $row): ?>
+                                    <tr>
+                                        <td><?php echo e($row['label']); ?></td>
+                                        <td class="num"><?php echo e(number_format($row['count'])); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            <?php endif; ?>
+        <?php endif; ?>
+
         <h3 class="mt-4">Registered companies in <?php echo e($pcodeDisplay); ?></h3>
         <ul class="record-list">
             <?php while ($comp_data = $comp_query->fetch(PDO::FETCH_ASSOC)): ?>

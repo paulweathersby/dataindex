@@ -164,6 +164,7 @@ require_once LIB_PATH . '/apiRequests.class.php';
 require_once LIB_PATH . '/dataOps.class.php';
 require_once LIB_PATH . '/accountsAnalysis.class.php';
 require_once LIB_PATH . '/shareholderAnalysis.class.php';
+require_once LIB_PATH . '/crimeReport.class.php';
 require_once LIB_PATH . '/visitorCheck.class.php';
 
 $app = new app();

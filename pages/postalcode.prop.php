@@ -40,8 +40,20 @@ $price_query = $app->query(
     ]
 );
 
+$crime = null;
+$crimeLatitude = trim((string) ($pcode_data['latitude'] ?? ''));
+$crimeLongitude = trim((string) ($pcode_data['longitude'] ?? ''));
+if ($pcode !== '' && $crimeLatitude !== '' && $crimeLongitude !== '' && is_numeric($crimeLatitude) && is_numeric($crimeLongitude)) {
+    $crime = (new crimeReport($app, new apiRequest($app)))->forPostcode(
+        $pcode,
+        (float) $crimeLatitude,
+        (float) $crimeLongitude,
+        (string) ($pcode_data['country'] ?? '')
+    );
+}
+
 $pageTitle = 'Information about ' . ($pcode_data['postcode'] ?? $pcode) . ' ' . ($pcode_data['ward'] ?? '');
 $canonical = SITE_URL . 'postalcode/postcode/' . rawurlencode($pcode_string);
 $pageDescription = 'Information about ' . ($pcode_data['postcode'] ?? $pcode)
     . ' ' . ($pcode_data['ward'] ?? '')
-    . ' including postcode data, property sales, registered companies and VAT registered businesses.';
+    . ' including postcode data, property sales, street-level crime, registered companies and VAT registered businesses.';
